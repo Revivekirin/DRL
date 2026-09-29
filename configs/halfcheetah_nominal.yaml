@@ -1,0 +1,5 @@
+env:
+  id: HalfCheetah-v5
+dynamics:
+  actuator_scale: 1.0
+seed: 0

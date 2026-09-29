@@ -1,0 +1,26 @@
+name: sac_smoke
+seed: 0
+env:
+  id: HalfCheetah-v5
+dynamics:
+  actuator_scale: 1.0
+algo:
+  hidden_dims: [32, 32]
+  actor_lr: 0.0003
+  critic_lr: 0.0003
+  alpha_lr: 0.0003
+  gamma: 0.99
+  tau: 0.005
+  initial_alpha: 0.2
+  target_entropy: null
+training:
+  real_env_steps: 64
+  batch_size: 16
+  replay_capacity: 256
+  learning_starts: 16
+  updates_per_env_step: 1
+  log_every: 16
+  torch_threads: 1
+evaluation:
+  seeds: [100, 101]
+  target_actuator_scale: 0.7
