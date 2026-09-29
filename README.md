@@ -282,3 +282,31 @@ condition. Nominal mean return was -6.8942569365; shifted mean return was
 -6.6842830539; delta was +0.2099738826. A separate checkpoint-evaluation command
 reproduced the same results. This smoke policy did not show return degradation.
 The complete suite passes 32 tests. No long source-training run was launched.
+
+## Remote training and terminal progress
+
+Training is now run on the user's remote server. Provide commands for training
+and smoke/update tests; do not execute them locally. The earlier validation
+results above predate this execution policy.
+
+On the remote server, from the repository root in its activated environment:
+
+```sh
+python -m pip install -e '.[test]'
+python scripts/train_sac_source.py --config configs/experiment/sac_halfcheetah_source.yaml
+```
+
+The tqdm progress bar shows completed/total real environment transitions,
+percentage, elapsed time, estimated remaining time and throughput. Its postfix
+shows policy updates, completed episodes, the latest completed episode return,
+and latest actor/critic/alpha losses and alpha. These metrics refresh at
+`training.log_every` intervals and episode boundaries. Return is `n/a` until
+an episode finishes. Add `--no-progress` to disable the bar; CSV logging remains
+active. Checkpoint saving and the start of frozen evaluation are also announced.
+
+For remote smoke validation:
+
+```sh
+python -m pytest -q
+python scripts/train_sac_source.py --config configs/experiment/sac_smoke.yaml
+```

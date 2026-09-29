@@ -12,6 +12,7 @@ from uuid import uuid4
 import numpy as np
 import torch
 import yaml
+from tqdm import tqdm
 from dynamics_shift.algorithms.sac.learner import SACLearner
 from dynamics_shift.config import ExperimentConfig
 from dynamics_shift.data.replay_buffer import ReplayBuffer
@@ -29,7 +30,8 @@ def _git_metadata() -> dict:
     return {"git_commit": run("rev-parse", "HEAD"), "git_dirty": bool(run("status", "--porcelain"))}
 
 
-def train_source(config: RunConfig, output_root: str | Path = "outputs") -> Path:
+def train_source(config: RunConfig, output_root: str | Path = "outputs", *,
+                 show_progress: bool = True) -> Path:
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "_" + uuid4().hex[:8]
     run_dir = Path(output_root) / config.name / f"seed_{config.seed}" / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
@@ -59,7 +61,11 @@ def train_source(config: RunConfig, output_root: str | Path = "outputs") -> Path
         episode_return, episode_length = 0.0, 0
         fields = [*counters, "elapsed_seconds", "replay_size", "episode_return", "episode_length",
                   "actor_loss", "critic_loss", "alpha_loss", "alpha"]
-        with (run_dir / "metrics" / "train.csv").open("x", newline="") as stream:
+        latest_episode_return = None
+        with (run_dir / "metrics" / "train.csv").open("x", newline="") as stream, tqdm(
+            total=config.training.real_env_steps, desc="SAC source", unit="env step",
+            dynamic_ncols=True, mininterval=1.0, disable=not show_progress,
+        ) as progress:
             writer = csv.DictWriter(stream, fieldnames=fields)
             writer.writeheader()
             for _ in range(config.training.real_env_steps):
@@ -78,6 +84,8 @@ def train_source(config: RunConfig, output_root: str | Path = "outputs") -> Path
                 counters["policy_gradient_steps"] = learner.policy_gradient_steps
                 finished = terminated or truncated
                 counters["episodes"] += int(finished)
+                if finished:
+                    latest_episode_return = episode_return
                 if (finished or counters["real_env_steps"] % config.training.log_every == 0
                         or counters["real_env_steps"] == config.training.real_env_steps):
                     writer.writerow({**counters, "elapsed_seconds": time.perf_counter() - start,
@@ -85,6 +93,14 @@ def train_source(config: RunConfig, output_root: str | Path = "outputs") -> Path
                                      "episode_return": episode_return if finished else "",
                                      "episode_length": episode_length if finished else ""})
                     stream.flush()
+                    progress.set_postfix({
+                        "updates": counters["policy_gradient_steps"],
+                        "episodes": counters["episodes"],
+                        "return": (f"{latest_episode_return:.2f}"
+                                   if latest_episode_return is not None else "n/a"),
+                        **{name: f"{value:.4g}" for name, value in losses.items()},
+                    }, refresh=False)
+                progress.update(1)
                 obs = next_obs
                 if finished:
                     obs, _ = env.reset()
@@ -92,6 +108,9 @@ def train_source(config: RunConfig, output_root: str | Path = "outputs") -> Path
         metadata["training_elapsed_seconds"] = time.perf_counter() - start
         checkpoint = run_dir / "checkpoints" / "final.pt"
         save_checkpoint(checkpoint, learner, counters, config.to_dict())
+        if show_progress:
+            tqdm.write(f"Checkpoint saved: {checkpoint}")
+            tqdm.write("Running frozen source/target evaluation...")
         # Evaluate a fresh learner loaded from the artifact, never the live training object.
         summary = evaluate_checkpoint(checkpoint, run_dir / "metrics" / "frozen_shift")
         metadata["frozen_delta_return"] = summary["delta_return"]

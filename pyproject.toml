@@ -7,7 +7,7 @@ name = "dynamics-shift"
 version = "0.1.0"
 description = "Controlled HalfCheetah actuator-shift validation"
 requires-python = ">=3.12"
-dependencies = ["gymnasium[mujoco]==1.3.0", "mujoco==3.14.0", "numpy==2.5.3", "PyYAML==6.0.3", "torch==2.14.0"]
+dependencies = ["gymnasium[mujoco]==1.3.0", "mujoco==3.14.0", "numpy==2.5.3", "PyYAML==6.0.3", "torch==2.14.0", "tqdm>=4.66,<5"]
 
 [project.optional-dependencies]
 test = ["pytest==9.1.1"]
