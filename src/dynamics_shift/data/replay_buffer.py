@@ -59,3 +59,24 @@ class ReplayBuffer:
             raise ValueError("Need nonempty replay and positive batch_size")
         indices = self.rng.integers(self.size, size=batch_size)
         return TransitionBatch(**{name: value[indices] for name, value in self._arrays.items()})
+
+    def state_dict(self) -> dict:
+        """Persist occupied slots and the sampling RNG, including ring position."""
+        import torch
+        from copy import deepcopy
+        return {"capacity": self.capacity, "size": self.size, "position": self.position,
+                "rng": deepcopy(self.rng.bit_generator.state),
+                "arrays": {k: torch.from_numpy(v[:self.size].copy()) for k, v in self._arrays.items()}}
+
+    def load_state_dict(self, state: dict) -> None:
+        if state["capacity"] != self.capacity or not 0 <= state["size"] <= self.capacity:
+            raise ValueError("Replay capacity/size mismatch")
+        if not 0 <= state["position"] < self.capacity:
+            raise ValueError("Invalid replay position")
+        for key, target in self._arrays.items():
+            values = state["arrays"][key].numpy()
+            if values.shape != (state["size"], *target.shape[1:]) or values.dtype != target.dtype:
+                raise ValueError(f"Invalid saved replay field {key}")
+            target[:state["size"]] = values
+        self.size, self.position = state["size"], state["position"]
+        self.rng.bit_generator.state = state["rng"]

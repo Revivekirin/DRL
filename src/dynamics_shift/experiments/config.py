@@ -16,6 +16,7 @@ class TrainingConfig:
     updates_per_env_step: int = 1
     log_every: int = 1000
     torch_threads: int = 1
+    checkpoint_every: int = 10000
 
     def __post_init__(self) -> None:
         import re
@@ -45,6 +46,25 @@ class EvaluationConfig:
 
 
 @dataclass(frozen=True)
+class TrackingConfig:
+    mode: str = "disabled"
+    project: str = "dynamics-shift"
+    entity: str | None = None
+    video_every: int = 50000
+    video_steps: int = 1000
+
+    def __post_init__(self) -> None:
+        if self.mode not in ("disabled", "online", "offline"):
+            raise ValueError("tracking.mode must be disabled, online or offline")
+        if not self.project:
+            raise ValueError("tracking.project must be nonempty")
+        if type(self.video_every) is not int or self.video_every < 0:
+            raise ValueError("video_every must be nonnegative; 0 disables video")
+        if type(self.video_steps) is not int or not 1 <= self.video_steps <= 1000:
+            raise ValueError("video_steps must be in [1, 1000]")
+
+
+@dataclass(frozen=True)
 class RunConfig:
     name: str = "sac_halfcheetah_source"
     seed: int = 0
@@ -53,6 +73,7 @@ class RunConfig:
     algo: SACConfig = field(default_factory=SACConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
     evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
+    tracking: TrackingConfig = field(default_factory=TrackingConfig)
 
     def __post_init__(self) -> None:
         if not self.name or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in self.name):
@@ -70,7 +91,7 @@ class RunConfig:
         raw = _mapping(raw, set(cls.__dataclass_fields__))
         values = dict(raw)
         for name, kind in (("env", EnvConfig), ("dynamics", DynamicsConfig), ("algo", SACConfig),
-                           ("training", TrainingConfig), ("evaluation", EvaluationConfig)):
+                           ("training", TrainingConfig), ("evaluation", EvaluationConfig), ("tracking", TrackingConfig)):
             values[name] = kind(**_mapping(raw.get(name, {}), set(kind.__dataclass_fields__)))
         return cls(**values)
 

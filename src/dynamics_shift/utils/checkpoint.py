@@ -1,6 +1,8 @@
-"""Learner checkpoints, not exact environment/replay resume snapshots."""
+"""Atomic learner checkpoints with optional full training continuation state."""
 from pathlib import Path
 import random
+import os
+import tempfile
 import numpy as np
 import torch
 from dynamics_shift.algorithms.sac.learner import SACLearner
@@ -23,17 +25,30 @@ def restore_rng(state: dict, device: torch.device) -> None:
 
 
 def save_checkpoint(path: str | Path, learner: SACLearner, counters: dict[str, int],
-                    config: dict) -> None:
+                    config: dict, *, training_state: dict | None = None,
+                    overwrite: bool = False) -> None:
     if counters["policy_gradient_steps"] != learner.policy_gradient_steps:
         raise ValueError("Learner and experiment update counters disagree")
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {"schema_version": 1, "learner": learner.state_dict(), "counters": dict(counters),
-               "config": config, "rng": capture_rng(learner.device), "replay_persisted": False,
-               "simulator_persisted": False}
-    # Exclusive creation: never silently replace an existing experiment artifact.
-    with path.open("xb") as stream:
-        torch.save(payload, stream)
+               "config": config, "rng": capture_rng(learner.device), "replay_persisted": training_state is not None,
+               "simulator_persisted": training_state is not None, "training_state": training_state}
+    # Complete a temporary file before publishing it; an interrupted write keeps latest intact.
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".checkpoint-", delete=False) as stream:
+            temporary = Path(stream.name)
+            torch.save(payload, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if overwrite:
+            os.replace(temporary, path)
+        else:
+            os.link(temporary, path)  # Fails if the destination already exists.
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def load_checkpoint(path: str | Path, restore_random_state: bool = False, *,

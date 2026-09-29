@@ -22,6 +22,14 @@ training:
   updates_per_env_step: 1
   log_every: 16
   torch_threads: 1
+  checkpoint_every: 32
 evaluation:
   seeds: [100, 101]
   target_actuator_scale: 0.7
+
+tracking:
+  mode: disabled
+  project: dynamics-shift
+  entity: null
+  video_every: 64
+  video_steps: 100

@@ -264,10 +264,9 @@ when learning on a GPU. Loading uses
 the caller's PyTorch RNG. Tests verify identical deterministic actions and
 identical subsequent updates given the same batch and random draws.
 
-**Replay and simulator state are not persisted. Exact training resume is not
-supported.** Checkpoints support evaluation and learner-state restoration, not
-continuation of the original environment/replay trajectory. The private replay
-RNG and environment/space RNGs are consequently not part of this checkpoint.
+**Source-runner checkpoints now persist replay and simulator state.**
+Use `--resume` as documented below. Older learner-only checkpoints remain
+evaluable but are rejected for training continuation.
 
 ### SAC tests
 
@@ -350,3 +349,81 @@ Remote verification commands (not run locally):
 python -m pytest -q tests/test_device.py
 python scripts/train_sac_source.py --config configs/experiment/sac_smoke.yaml
 ```
+
+## Periodic checkpoints, continuation, W&B and videos
+
+New source runs save `checkpoints/latest.pt` initially and every
+`training.checkpoint_every` real transitions (10,000 in the source config).
+The runner writes a temporary file, flushes it, then atomically replaces latest.
+`final.pt` is also a full checkpoint. Both contain occupied replay slots and
+sampling RNG, MuJoCo integration state, wrapper elapsed steps, environment/space
+RNGs, current observation and unfinished episode return/length, in addition to
+all learner/optimizer/global RNG state. Saving two full checkpoints uses more
+disk space than the former learner-only checkpoint.
+
+`--resume PATH` restores that state into a new run directory and keeps counters.
+`real_env_steps` is the total target, not additional transitions. Algorithm,
+replay and environment settings must match; the step budget, device, logging,
+checkpoint interval and tracking settings can change. Gymnasium, MuJoCo, NumPy
+and PyTorch versions must match the saved versions. Same-state continuation is
+implemented, but cross-device/platform bitwise reproducibility is not promised.
+The split-run regression test must be run on the remote server before a long run.
+Older checkpoints without replay/simulator state cannot resume; CSV cannot
+reconstruct lost network parameters.
+
+SIGTERM or SIGUSR1 requests a save and exit after a completed interaction/update.
+Slurm can send an early signal, e.g. `#SBATCH --signal=USR1@120` in a batch job
+that launches the Python process via `srun`. Signal delivery depends on the site
+and launch method. SIGKILL cannot be handled: the previous atomic latest remains
+the recovery point, so periodic saving is the primary protection.
+
+W&B is opt-in: `--wandb online` or `--wandb offline`. Offline runs can later be
+uploaded with `wandb sync`. Configure `tracking.project` and optional `entity`.
+Metrics use `real_env_steps` as the x-axis. Each resumed segment creates a new
+W&B run in the same experiment/seed group, with its parent checkpoint recorded;
+it does not rewrite existing W&B history.
+
+With tracking enabled, every 50,000 transitions and at completion the runner
+records one deterministic episode each for source and target using the first
+configured evaluation seed. MP4s are streamed to `videos/` and logged as
+`video/source` and `video/target`. Recording uses separate factory environments
+and preserves learner RNG. It adds no training transitions or updates. These
+videos are qualitative samples; final multi-episode statistics are separate.
+`tracking.video_every: 0` disables recording. Rendering failures produce a
+warning and `video_errors.log` rather than discarding training progress.
+
+Headless NVIDIA rendering uses `MUJOCO_GL=egl`, set before Python starts. W&B
+shows uploaded videos; videos are rendered by MuJoCo on the server, not generated
+by W&B. See [W&B media logging](https://docs.wandb.ai/guides/track/log/) and
+[Gymnasium rendering](https://gymnasium.farama.org/environments/mujoco/).
+
+For the existing server2 environment, install only the new optional packages
+first, so its working PyTorch 2.5.1+cu121 is not replaced by the repository's
+2.14.0 pin:
+
+```sh
+cd ~/repos/DRL
+.venv/bin/python -m pip install 'wandb>=0.19,<1' 'imageio[ffmpeg]>=2.34,<3'
+.venv/bin/wandb login
+.venv/bin/python -m pytest -q tests/test_training_resume.py tests/test_tracking.py
+MUJOCO_GL=egl .venv/bin/python scripts/train_sac_source.py --config configs/experiment/sac_smoke.yaml --wandb online
+```
+
+This is a version deviation from the original lock, recorded in run metadata;
+remote regression tests are needed. Do not reinstall the full project with
+dependencies in that environment unless intentionally migrating PyTorch.
+
+New training:
+
+```sh
+MUJOCO_GL=egl .venv/bin/python scripts/train_sac_source.py --config configs/experiment/sac_halfcheetah_source.yaml --wandb online
+```
+
+Continue from an actual new-format checkpoint (replace the example path):
+
+```sh
+MUJOCO_GL=egl .venv/bin/python scripts/train_sac_source.py --config configs/experiment/sac_halfcheetah_source.yaml --wandb online --resume outputs/sac_halfcheetah_source/seed_0/RUN_ID/checkpoints/latest.pt
+```
+
+Local verification of this change is static only; no local training, W&B upload,
+GPU execution or video rendering was performed.
