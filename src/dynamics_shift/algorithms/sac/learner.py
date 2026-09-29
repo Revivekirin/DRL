@@ -13,16 +13,16 @@ from .networks import GaussianActor, TwinQ
 
 class SACLearner:
     def __init__(self, obs_dim: int, action_low: np.ndarray, action_high: np.ndarray,
-                 config: SACConfig) -> None:
-        # CPU is the supported execution backend for this milestone.
+                 config: SACConfig, device: str | torch.device = "cpu") -> None:
+        self.device = torch.device(device)
         self.config = config
         self.obs_dim = obs_dim
         self.action_low = np.asarray(action_low, dtype=np.float32).copy()
         self.action_high = np.asarray(action_high, dtype=np.float32).copy()
-        self.actor = GaussianActor(obs_dim, self.action_low, self.action_high, config.hidden_dims)
-        self.critic = TwinQ(obs_dim, len(self.action_low), config.hidden_dims)
+        self.actor = GaussianActor(obs_dim, self.action_low, self.action_high, config.hidden_dims).to(self.device)
+        self.critic = TwinQ(obs_dim, len(self.action_low), config.hidden_dims).to(self.device)
         self.target_critic = deepcopy(self.critic).requires_grad_(False)
-        self.log_alpha = nn.Parameter(torch.tensor(math.log(config.initial_alpha)))
+        self.log_alpha = nn.Parameter(torch.tensor(math.log(config.initial_alpha), device=self.device))
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=config.actor_lr)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=config.critic_lr)
         self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=config.alpha_lr)
@@ -36,12 +36,12 @@ class SACLearner:
 
     @torch.no_grad()
     def act(self, obs: np.ndarray, deterministic: bool = False) -> np.ndarray:
-        tensor = torch.as_tensor(np.asarray(obs), dtype=torch.float32)
+        tensor = torch.as_tensor(np.asarray(obs), dtype=torch.float32, device=self.device)
         if deterministic:
             action = self.actor.deterministic(tensor)
         else:
             action, _ = self.actor.sample(tensor)
-        return action.numpy()
+        return action.cpu().numpy()
 
     @torch.no_grad()
     def bellman_target(self, reward: torch.Tensor, next_obs: torch.Tensor,
@@ -53,7 +53,7 @@ class SACLearner:
             torch.minimum(q1, q2) - self.alpha * log_prob)
 
     def update(self, batch: TransitionBatch) -> dict[str, float]:
-        tensors = {name: torch.as_tensor(np.asarray(value), dtype=torch.float32)
+        tensors = {name: torch.as_tensor(np.asarray(value), dtype=torch.float32, device=self.device)
                    for name, value in vars(batch).items()}
         n = tensors["obs"].shape[0]
         shapes = dict(obs=(n, self.obs_dim), action=(n, len(self.action_low)), reward=(n, 1),
@@ -105,8 +105,8 @@ class SACLearner:
                 "policy_gradient_steps": self.policy_gradient_steps}
 
     @classmethod
-    def from_state_dict(cls, state: dict) -> "SACLearner":
-        learner = cls(state["obs_dim"], state["action_low"], state["action_high"], SACConfig(**state["config"]))
+    def from_state_dict(cls, state: dict, device: str | torch.device = "cpu") -> "SACLearner":
+        learner = cls(state["obs_dim"], state["action_low"], state["action_high"], SACConfig(**state["config"]), device=device)
         for name in ("actor", "critic", "target_critic", "actor_optimizer", "critic_optimizer", "alpha_optimizer"):
             getattr(learner, name).load_state_dict(state[name])
         with torch.no_grad():

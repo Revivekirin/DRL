@@ -8,6 +8,7 @@ from dynamics_shift.config import DynamicsConfig, EnvConfig, ExperimentConfig, _
 
 @dataclass(frozen=True)
 class TrainingConfig:
+    device: str = "cuda:0"
     real_env_steps: int = 1_000_000
     batch_size: int = 256
     replay_capacity: int = 1_000_000
@@ -17,7 +18,12 @@ class TrainingConfig:
     torch_threads: int = 1
 
     def __post_init__(self) -> None:
+        import re
+        if not isinstance(self.device, str) or not re.fullmatch(r"cpu|cuda(?::[0-9]+)?", self.device):
+            raise ValueError("device must be cpu, cuda, or cuda:N")
         for name, value in asdict(self).items():
+            if name == "device":
+                continue
             if type(value) is not int or value < (0 if name == "learning_starts" else 1):
                 raise ValueError(f"Invalid integer setting: {name}")
         if self.batch_size > self.replay_capacity:

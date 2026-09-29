@@ -177,7 +177,7 @@ bootstrapping; TimeLimit truncations do not. Both trigger episode reset.
 
 ### Run commands
 
-Small CPU validation run:
+Small validation run (on the remote server):
 
 ```sh
 python scripts/train_sac_source.py --config configs/experiment/sac_smoke.yaml
@@ -207,7 +207,8 @@ python scripts/evaluate_sac_shift.py --checkpoint outputs/<run>/checkpoints/fina
 ```
 
 Run both commands from the repository root with the virtual environment active.
-CPU is the supported backend; `torch_threads` is configurable. PyTorch 2.14.0
+Training defaults to CUDA; `training.device` selects the device explicitly.
+`torch_threads` controls CPU work only. PyTorch 2.14.0
 provided a native CPython 3.14/macOS ARM64 wheel, so no Python migration or
 changes to the validated MuJoCo dependency versions were needed.
 
@@ -257,7 +258,8 @@ counters, start/end times, elapsed times, and success/failure status.
 
 Checkpoints contain actor, both critics, target critics, all three Adam states,
 log-alpha, learner dimensions/action bounds, full resolved experiment config,
-counters, and Python/NumPy-global/PyTorch-CPU RNG states. Loading uses
+counters, and Python/NumPy-global/PyTorch-CPU RNG states, plus the selected CUDA RNG state
+when learning on a GPU. Loading uses
 `weights_only=True`. RNG restoration is optional; ordinary loading preserves
 the caller's PyTorch RNG. Tests verify identical deterministic actions and
 identical subsequent updates given the same batch and random draws.
@@ -308,5 +310,43 @@ For remote smoke validation:
 
 ```sh
 python -m pytest -q
+python scripts/train_sac_source.py --config configs/experiment/sac_smoke.yaml
+```
+
+## GPU preflight (remote server)
+
+Source and smoke YAML configs now set `training.device: cuda:0`. Before creating
+a run directory or collecting transitions, the runner checks CUDA availability,
+the requested device index, a real GPU matrix multiplication and synchronization.
+It prints the GPU name and PyTorch/CUDA build versions. Failure raises an error;
+there is no automatic CPU fallback. After model creation it verifies parameter
+placement. SAC actor/critics/targets, entropy parameter and sampled update batches
+use the chosen GPU. MuJoCo simulation and NumPy replay storage remain on CPU.
+
+Check only, without training:
+
+```sh
+nvidia-smi
+python scripts/train_sac_source.py --config configs/experiment/sac_halfcheetah_source.yaml --check-device-only
+```
+
+Then train:
+
+```sh
+python scripts/train_sac_source.py --config configs/experiment/sac_halfcheetah_source.yaml
+```
+
+`--device cuda:1` overrides the YAML. CUDA indices are relative to devices visible
+to the process; do not use `CUDA_VISIBLE_DEVICES=-1` for GPU training. Follow the
+server scheduler's GPU allocation. `--device cpu` is an explicit opt-in for CPU
+execution, primarily for tests. The standalone evaluation CLI also defaults to
+`cuda:0` and accepts `--device`. Final evaluation during training uses the training
+device. Checkpoints can be loaded onto either device; CPU/GPU numerical results
+need not be bitwise identical. Existing CPU checkpoints remain loadable.
+
+Remote verification commands (not run locally):
+
+```sh
+python -m pytest -q tests/test_device.py
 python scripts/train_sac_source.py --config configs/experiment/sac_smoke.yaml
 ```

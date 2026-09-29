@@ -14,6 +14,7 @@ algo:
   initial_alpha: 0.2
   target_entropy: null
 training:
+  device: cuda:0
   real_env_steps: 64
   batch_size: 16
   replay_capacity: 256

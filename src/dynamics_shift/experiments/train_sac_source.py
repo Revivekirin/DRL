@@ -20,6 +20,7 @@ from dynamics_shift.envs import make_env
 from dynamics_shift.experiments.config import RunConfig
 from dynamics_shift.experiments.evaluate_sac_shift import evaluate_checkpoint
 from dynamics_shift.utils.checkpoint import save_checkpoint
+from dynamics_shift.utils.device import check_device
 
 
 def _git_metadata() -> dict:
@@ -32,6 +33,7 @@ def _git_metadata() -> dict:
 
 def train_source(config: RunConfig, output_root: str | Path = "outputs", *,
                  show_progress: bool = True) -> Path:
+    device = check_device(config.training.device)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "_" + uuid4().hex[:8]
     run_dir = Path(output_root) / config.name / f"seed_{config.seed}" / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
@@ -40,7 +42,9 @@ def train_source(config: RunConfig, output_root: str | Path = "outputs", *,
     metadata = {**_git_metadata(), "algorithm": "sac", "seed": config.seed,
                 "environment": config.env.id, "source_dynamics": {"actuator_scale": 1.0},
                 "target_dynamics": {"actuator_scale": config.evaluation.target_actuator_scale},
-                "python": platform.python_version(), "device": "cpu",
+                "python": platform.python_version(), "device": str(device),
+                "gpu_name": torch.cuda.get_device_name(device) if device.type == "cuda" else None,
+                "cuda_build": torch.version.cuda,
                 "versions": {name: version(name) for name in ("gymnasium", "mujoco", "numpy", "torch")},
                 "started_at": datetime.now(timezone.utc).isoformat(), "status": "running",
                 "replay_persisted": False, "exact_training_resume": False}
@@ -55,7 +59,11 @@ def train_source(config: RunConfig, output_root: str | Path = "outputs", *,
         np.random.seed(config.seed)
         torch.manual_seed(config.seed)
         env = make_env(ExperimentConfig(config.env, config.dynamics, config.seed))
-        learner = SACLearner(env.observation_space.shape[0], env.action_space.low, env.action_space.high, config.algo)
+        learner = SACLearner(env.observation_space.shape[0], env.action_space.low, env.action_space.high, config.algo, device=device)
+        if any(parameter.device != device for module in (learner.actor, learner.critic, learner.target_critic)
+               for parameter in module.parameters()) or learner.log_alpha.device != device:
+            raise RuntimeError("Learner parameter placement does not match the requested device")
+        print(f"SAC learner device verified: {device}", flush=True)
         replay = ReplayBuffer(config.training.replay_capacity, learner.obs_dim, len(learner.action_low), config.seed)
         obs, _ = env.reset(seed=config.seed)
         episode_return, episode_length = 0.0, 0
@@ -112,7 +120,7 @@ def train_source(config: RunConfig, output_root: str | Path = "outputs", *,
             tqdm.write(f"Checkpoint saved: {checkpoint}")
             tqdm.write("Running frozen source/target evaluation...")
         # Evaluate a fresh learner loaded from the artifact, never the live training object.
-        summary = evaluate_checkpoint(checkpoint, run_dir / "metrics" / "frozen_shift")
+        summary = evaluate_checkpoint(checkpoint, run_dir / "metrics" / "frozen_shift", device=device)
         metadata["frozen_delta_return"] = summary["delta_return"]
         metadata["status"] = "complete"
     except Exception as error:

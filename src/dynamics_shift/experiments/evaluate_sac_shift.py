@@ -11,14 +11,15 @@ from dynamics_shift.experiments.config import RunConfig
 from dynamics_shift.utils.checkpoint import load_checkpoint
 
 
-def evaluate_checkpoint(checkpoint: str | Path, output_dir: str | Path | None = None) -> dict:
+def evaluate_checkpoint(checkpoint: str | Path, output_dir: str | Path | None = None, *,
+                        device: str | torch.device = "cpu") -> dict:
     checkpoint = Path(checkpoint)
     if output_dir is None:
         output_dir = checkpoint.parent.parent / "evaluations" / (
             datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "_" + uuid4().hex[:8])
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=False)
-    learner, payload = load_checkpoint(checkpoint)
+    learner, payload = load_checkpoint(checkpoint, device=device)
     config = RunConfig.from_dict(payload["config"])
     previous_threads = torch.get_num_threads()
     try:
@@ -35,6 +36,6 @@ def evaluate_checkpoint(checkpoint: str | Path, output_dir: str | Path | None = 
                     "checkpoint": str(checkpoint.resolve()), "seeds": list(config.evaluation.seeds),
                     "source_actuator_scale": 1.0,
                     "target_actuator_scale": config.evaluation.target_actuator_scale,
-                    "deterministic": True, "counters": payload["counters"]})
+                    "device": str(learner.device), "deterministic": True, "counters": payload["counters"]})
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     return summary
