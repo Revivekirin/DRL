@@ -5,7 +5,7 @@ import math
 import yaml
 from dynamics_shift.algorithms.sac.config import SACConfig
 from dynamics_shift.config import EnvConfig, DynamicsConfig, _mapping
-from dynamics_shift.experiments.config import TrainingConfig, RunConfig
+from dynamics_shift.experiments.config import TrainingConfig, RunConfig, TrackingConfig
 
 
 @dataclass(frozen=True)
@@ -51,6 +51,7 @@ class MBPORunConfig:
     algo: SACConfig = field(default_factory=SACConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
     mbpo: MBPOConfig = field(default_factory=MBPOConfig)
+    tracking: TrackingConfig = field(default_factory=TrackingConfig)
 
     def __post_init__(self) -> None:
         RunConfig(name=self.name, seed=self.seed, env=self.env, dynamics=self.dynamics,
