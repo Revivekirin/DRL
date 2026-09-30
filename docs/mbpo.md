@@ -1,0 +1,164 @@
+# Nominal MBPO baseline
+
+This milestone uses the exact existing `SACLearner` class. No SAC losses or
+networks are duplicated. The validated environment/shift modules and existing
+plain-SAC artifacts are unchanged. MBPO initializes a new policy for its own
+baseline; it does not retrain or overwrite the reference plain-SAC policy.
+Only nominal HalfCheetah-v5 is supported by the runner. No target environment,
+shift controller, adaptation, or reliability rule is invoked.
+
+## Data flow
+
+Real interaction → `RealReplayBuffer` → model dataset/refit → short stochastic
+model rollouts → separate `ModelReplayBuffer` → mixed `TransitionBatch` →
+shared `SACLearner.update(batch)`.
+
+The dataset takes at most `model_max_samples` real transitions without
+replacement. A randomized holdout is split before fitting, without overlapping
+indices. Holdouts are resampled at each scheduled refit, so validation measures
+that refit's holdout performance, not performance on a permanently unseen test
+set. Bootstrap samples for each ensemble member contain only training indices.
+Synthetic buffers are rejected by the dataset constructor.
+
+## Probabilistic dynamics
+
+The input is concatenated `[observation, action]`. The target is concatenated
+`[next_observation - observation, reward]`. Each independent SiLU MLP predicts a
+mean and diagonal log variance over all targets. The model contains no MuJoCo
+fields or HalfCheetah-specific reward formula. Reward is learned jointly.
+
+Loss is Gaussian NLL without the constant log(2π)/2, averaged over batch and
+output dimensions. Negative NLL values are possible. Smooth fixed log-variance
+bounds near [-10, 0.5] and gradient norm clipping at 100 are numerical safeguards;
+nonfinite losses/gradients/rollouts raise errors instead of being silently
+clipped or accepted. Validation NLL and physical target RMSE are available per
+member. The latter mixes delta-observation and reward units; it is a training
+monitor, not a normalized scientific mismatch score.
+
+Each member has its own Adam optimizer and independent bootstrap sample.
+Training runs for at most `model_max_epochs`, stops after `model_patience`
+non-improving validation epochs, and restores each member's best validation
+weights **and the matching optimizer state**. Elite members are selected by
+validation NLL. `dynamics_model_train_steps` counts individual member optimizer
+steps, including steps later superseded by best-epoch restoration.
+
+`train(dataset)`, `predict(inputs)`, `validation_metrics(inputs, targets)` and
+`disagreement(inputs)` are explicit methods on a model owner object (not an
+nn.Module train-mode overload). Predict returns arrays of shape
+[ensemble_size, batch, observation_dim + 1] for means and variances in original
+units. Disagreement returns one value per input: mean variance across elite
+state-delta means, excluding reward and aleatoric variance.
+
+## Normalization
+
+Input and target means/standard deviations are estimated once, using only the
+training partition of the first source fit. Standard deviations have a 1e-6
+floor. These statistics are frozen across subsequent source refits; this is an
+explicit repository choice that keeps coordinates stable across refits and
+later frozen diagnostics. Holdout data never determines these first-fit
+statistics. Predict, validation and disagreement never recompute them.
+
+## Rollouts and mixing
+
+Rollouts start from real replay observations. At every rollout depth, stochastic
+SAC actions are used and an elite member is sampled independently for each
+transition (TS1). A Gaussian sample from that member predicts delta and reward.
+All members are retained in the checkpoint; elites determine rollout sampling.
+
+HalfCheetah-v5 has no physical terminal condition. Synthetic transitions use
+`terminated=False`, `truncated=False`. A short rollout horizon is a computation
+cutoff, not an environment TimeLimit. Neither it nor the unknown remaining time
+of a sampled real state masks bootstrapping. Tasks with physical terminal
+conditions will require a separate explicit termination function later.
+
+Synthetic replay is cleared after every model refit and regenerated once from
+that refit. It is never used for model fitting. Real replay retains its original
+terminated/truncated flags. Real/model samples are concatenated and shuffled
+before calling the shared learner. The integer real count is
+`max(1, min(batch_size - 1, floor(batch_size * real_ratio)))`; realized counts are
+logged explicitly. Before the first model fit no SAC update is performed.
+
+## Defaults and departures from original MBPO
+
+The baseline follows MBPO's probabilistic ensemble, elite models, real-data
+branched short rollouts and shared SAC optimization. See the
+[original paper/project](https://jannerm.github.io/mbpo-www/) and
+[original implementation](https://github.com/jannerm/mbpo).
+
+| Setting | Source config |
+|---|---:|
+| Ensemble / elites | 7 / 5 |
+| Model hidden layers | 200 × 4 |
+| Model learning rate / batch | 0.001 / 256 |
+| Real warmup | 10,000 |
+| Model refit frequency | 250 real transitions |
+| Holdout fraction | 0.2 |
+| Maximum model epochs / patience | 20 / 5 |
+| Maximum real samples per refit | 100,000 |
+| Fixed rollout horizon / starting states | 1 / 10,000 |
+| Synthetic capacity | 100,000 |
+| Requested real ratio | 0.05 (12 real + 244 model per 256 batch) |
+| Policy updates per real transition after warmup | 20 |
+
+7/5 ensembles, 200-unit layers, a 0.05 real ratio and short branched rollouts are
+MBPO-style choices. This is not a bit-for-bit reproduction of the upstream
+TensorFlow implementation: the fixed one-step horizon, rollout population,
+clearing policy, sample cap, fixed normalization, bounded epoch budget,
+fixed variance bounds, SiLU activations and existing SAC implementation are
+explicit repository choices. No automatic rollout-length schedule is used.
+
+Plain SAC's current config uses one update per real transition; this MBPO config
+uses 20. Thus a same-real-budget comparison is not a matched-update comparison.
+`policy_gradient_steps`, `real_policy_samples` and `synthetic_policy_samples`
+allow that difference to be audited. No performance claim is made yet.
+
+## Checkpoints and outputs
+
+A unique run directory contains config, metadata, train.csv, per-member
+model.csv, and atomic latest.pt/final.pt. Checkpoints use the existing SAC
+container, adding the MBPO state inside training_state:
+
+- shared SAC actor/critics/targets, all optimizers and alpha;
+- ensemble parameters, per-member optimizers, frozen normalization, elites,
+  model RNG, training/refit counts and last validation metadata;
+- physically separate real and synthetic replay, their RNGs and source labels;
+- simulator/episode continuation state and global/runner RNG;
+- counters and complete config.
+
+`load_frozen_model` loads model/normalization for later diagnostics without
+constructing a policy learner; its parameters are frozen. Model optimizer state
+is available for resume but prediction invokes no optimizer step.
+`--resume` continues MBPO checkpoints; configuration changes other than total
+budget, device, thread/log/checkpoint settings are rejected. Existing software
+version checks for simulator/replay resume still apply. Periodic checkpoints
+and SIGTERM/SIGUSR1 best-effort saving use the same approach as the SAC runner.
+Wall times are per resumed invocation; counters are cumulative.
+
+No target evaluation is run automatically in this milestone. The MBPO runner
+currently writes CSV/progress metrics; it does not use the SAC tracker that
+would create shifted video environments. Frozen MBPO diagnostics come later.
+
+## Remote-only validation and smoke
+
+No new ML framework or dependency is required. Use the server's existing working
+PyTorch installation; do not reinstall PyTorch merely to run this code.
+
+```sh
+cd /home/jhkim/repos/DRL
+.venv/bin/python -m pytest -q tests/test_mbpo_inference.py tests/test_mbpo_training.py
+.venv/bin/python scripts/train_mbpo_source.py --config configs/experiment/mbpo_smoke.yaml --check-device-only
+.venv/bin/python scripts/train_mbpo_source.py --config configs/experiment/mbpo_smoke.yaml
+```
+
+The first command includes model fitting and shared SAC updates and must run on
+the remote server under this repository's execution policy. Local validation
+excludes test_mbpo_training.py. That file also tests checkpoint predictions,
+normalization preservation, optimizer continuation and absence of shift events.
+
+Expected smoke counters if it completes (not measured local results):
+48 real transitions, 33 policy updates, 3 model refits, 24 individual member
+optimizer steps, 24 generated synthetic transitions, and zero finished real
+episodes. Real/model policy sample counts are 132 each. The run uses a 2-member,
+1-elite, 16×16 model; short returns have no scientific interpretation.
+
+Do not start the full MBPO source config until explicitly approved.

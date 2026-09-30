@@ -541,3 +541,11 @@ use small untrained actors solely to test inference and statistics, never as
 experimental substitutes. The eight trained-policy results must be obtained
 by the remote command above. No trained severity values have been inferred from
 the two historical reference points.
+
+## MBPO nominal implementation
+
+An MBPO runner now reuses the existing SAC learner with a probabilistic dynamics
+ensemble, separate synthetic replay and explicit real/model batch mixing.
+See [MBPO architecture, defaults, checkpoint semantics and remote smoke commands](docs/mbpo.md).
+The implementation is nominal-only. It does not modify the validated shift
+backend or existing seed-0 SAC artifacts. Full MBPO training is not authorized.

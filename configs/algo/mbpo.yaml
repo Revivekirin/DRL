@@ -1,0 +1,14 @@
+ensemble_size: 7
+elite_size: 5
+model_hidden_dims: [200, 200, 200, 200]
+model_learning_rate: 0.001
+model_batch_size: 256
+model_train_frequency: 250
+model_max_epochs: 20
+model_patience: 5
+model_max_samples: 100000
+holdout_ratio: 0.2
+rollout_horizon: 1
+rollout_batch_size: 10000
+model_replay_capacity: 100000
+real_ratio: 0.05

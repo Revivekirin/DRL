@@ -1,0 +1,18 @@
+name: mbpo_halfcheetah_source
+seed: 0
+env:
+  id: HalfCheetah-v5
+dynamics:
+  actuator_scale: 1.0
+algo: ../algo/sac.yaml
+mbpo: ../algo/mbpo.yaml
+training:
+  device: cuda:0
+  real_env_steps: 1000000
+  batch_size: 256
+  replay_capacity: 1000000
+  learning_starts: 10000
+  updates_per_env_step: 20
+  log_every: 1000
+  torch_threads: 1
+  checkpoint_every: 10000
