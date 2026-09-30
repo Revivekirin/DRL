@@ -8,21 +8,108 @@ Only smoke training has been run; trained-policy degradation has not been establ
 
 ## Install and run
 
+### Common environment
+
 From the repository root (Python >=3.12):
 
 ```sh
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
+```
+
+PyTorch is intentionally not pinned in `pyproject.toml` because the required
+wheel depends on the platform and accelerator. Install an appropriate PyTorch
+build first, then install the project.
+
+### Remote NVIDIA GPU server
+
+The current remote training server uses:
+
+- Python 3.12.14
+- NVIDIA Quadro RTX 8000
+- NVIDIA driver 535.171.04
+- PyTorch 2.5.1+cu121
+- CUDA build 12.1
+
+`nvidia-smi` reports CUDA capability 12.2 for the installed driver. This does
+not require the PyTorch wheel to use exactly CUDA 12.2. The CUDA 12.1 PyTorch
+wheel is compatible with the current driver and has been verified on the server.
+
+Install PyTorch first:
+
+```sh
+python -m pip install \
+  torch==2.5.1 \
+  --index-url https://download.pytorch.org/whl/cu121
+```
+
+Then install the project and test dependencies:
+
+```sh
 python -m pip install -e '.[test]'
+```
+
+Verify the CUDA installation:
+
+```sh
+python - <<'PY'
+import torch
+
+print("PyTorch:", torch.__version__)
+print("CUDA build:", torch.version.cuda)
+print("CUDA available:", torch.cuda.is_available())
+
+if torch.cuda.is_available():
+    print("GPU:", torch.cuda.get_device_name(0))
+    x = torch.ones(1000, device="cuda")
+    print("CUDA tensor test:", x.sum().item())
+PY
+```
+
+Expected on the current remote training server:
+
+```text
+PyTorch: 2.5.1+cu121
+CUDA build: 12.1
+CUDA available: True
+GPU: Quadro RTX 8000
+CUDA tensor test: 1000.0
+```
+
+Then run:
+
+```sh
 python -m pytest -q
 python scripts/verify_actuator_shift.py
 ```
 
-Tested on macOS ARM64 with Python 3.14.7, Gymnasium 1.3.0, MuJoCo 3.14.0,
-NumPy 2.5.3, PyYAML 6.0.3, PyTorch 2.14.0, and pytest 9.1.1. Direct dependencies are pinned
-in pyproject.toml. Transitive dependencies are resolved by pip. Python 3.12
-is the minimum required by the pinned NumPy; other platforms were not tested.
-Headless physics tests need no rendered window.
+### Tested environments
+
+Environment and physics validation was originally tested on macOS ARM64 with:
+
+- Python 3.14.7
+- Gymnasium 1.3.0
+- MuJoCo 3.14.0
+- NumPy 2.5.3
+- PyYAML 6.0.3
+- PyTorch 2.14.0
+- pytest 9.1.1
+
+Remote SAC training is currently run on:
+
+- Linux
+- Python 3.12.14
+- NVIDIA Quadro RTX 8000
+- NVIDIA driver 535.171.04
+- PyTorch 2.5.1+cu121
+- CUDA build 12.1
+
+The validated MuJoCo, Gymnasium, NumPy, and PyYAML versions remain pinned in
+`pyproject.toml`. PyTorch is installed separately because its correct wheel is
+platform- and accelerator-specific. Transitive dependencies are resolved by pip.
+Python 3.12 is the minimum required by the pinned NumPy. Headless physics tests
+need no rendered window.
 
 The diagnostic defaults to 20 actions and writes
 `outputs/actuator_shift_verification.csv`. Options: `--source`, `--target`,
@@ -122,7 +209,7 @@ should be treated as opaque and left unmodified.
 ## Validation results
 
 The environment tests pass. Coverage includes nominal trajectory/reward/termination
- equivalence, non-cumulative scaling, exact reset, defensive nominal storage,
+equivalence, non-cumulative scaling, exact reset, defensive nominal storage,
 invalid inputs, effective torque, observation/action/reward contracts, the full
 1,000-step horizon, snapshot replay at nominal and shifted dynamics, RNG replay,
 and an actual trajectory change from the same initial integration state.
@@ -208,9 +295,12 @@ python scripts/evaluate_sac_shift.py --checkpoint outputs/<run>/checkpoints/fina
 
 Run both commands from the repository root with the virtual environment active.
 Training defaults to CUDA; `training.device` selects the device explicitly.
-`torch_threads` controls CPU work only. PyTorch 2.14.0
-provided a native CPython 3.14/macOS ARM64 wheel, so no Python migration or
-changes to the validated MuJoCo dependency versions were needed.
+`torch_threads` controls CPU work only.
+
+The remote GPU training environment uses Python 3.12 with PyTorch 2.5.1+cu121.
+The earlier macOS validation environment used Python 3.14 with PyTorch 2.14.0.
+The PyTorch build used for macOS validation therefore does not determine the
+build used for remote GPU training.
 
 ### Frozen evaluation
 
@@ -259,14 +349,15 @@ counters, start/end times, elapsed times, and success/failure status.
 Checkpoints contain actor, both critics, target critics, all three Adam states,
 log-alpha, learner dimensions/action bounds, full resolved experiment config,
 counters, and Python/NumPy-global/PyTorch-CPU RNG states, plus the selected CUDA RNG state
-when learning on a GPU. Loading uses
-`weights_only=True`. RNG restoration is optional; ordinary loading preserves
-the caller's PyTorch RNG. Tests verify identical deterministic actions and
-identical subsequent updates given the same batch and random draws.
+when learning on a GPU. Loading uses `weights_only=True`. RNG restoration is
+optional; ordinary loading preserves the caller's PyTorch RNG. Tests verify
+identical deterministic actions and identical subsequent updates given the same
+batch and random draws.
 
-**Source-runner checkpoints now persist replay and simulator state.**
-Use `--resume` as documented below. Older learner-only checkpoints remain
-evaluable but are rejected for training continuation.
+**Replay and simulator state are not persisted. Exact training resume is not
+supported.** Checkpoints support evaluation and learner-state restoration, not
+continuation of the original environment/replay trajectory. The private replay
+RNG and environment/space RNGs are consequently not part of this checkpoint.
 
 ### SAC tests
 
@@ -290,11 +381,21 @@ Training is now run on the user's remote server. Provide commands for training
 and smoke/update tests; do not execute them locally. The earlier validation
 results above predate this execution policy.
 
-On the remote server, from the repository root in its activated environment:
+On the remote server, from the repository root:
 
 ```sh
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+
+python -m pip install \
+  torch==2.5.1 \
+  --index-url https://download.pytorch.org/whl/cu121
+
 python -m pip install -e '.[test]'
-python scripts/train_sac_source.py --config configs/experiment/sac_halfcheetah_source.yaml
+
+python scripts/train_sac_source.py \
+  --config configs/experiment/sac_halfcheetah_source.yaml
 ```
 
 The tqdm progress bar shows completed/total real environment transitions,
@@ -322,17 +423,34 @@ there is no automatic CPU fallback. After model creation it verifies parameter
 placement. SAC actor/critics/targets, entropy parameter and sampled update batches
 use the chosen GPU. MuJoCo simulation and NumPy replay storage remain on CPU.
 
+The current remote server has been verified with:
+
+```text
+GPU ready: cuda:0 | Quadro RTX 8000 | PyTorch 2.5.1+cu121 | CUDA build 12.1
+```
+
+Server GPU environment:
+
+```text
+NVIDIA driver: 535.171.04
+nvidia-smi CUDA capability: 12.2
+GPU: Quadro RTX 8000
+```
+
 Check only, without training:
 
 ```sh
 nvidia-smi
-python scripts/train_sac_source.py --config configs/experiment/sac_halfcheetah_source.yaml --check-device-only
+python scripts/train_sac_source.py \
+  --config configs/experiment/sac_halfcheetah_source.yaml \
+  --check-device-only
 ```
 
 Then train:
 
 ```sh
-python scripts/train_sac_source.py --config configs/experiment/sac_halfcheetah_source.yaml
+python scripts/train_sac_source.py \
+  --config configs/experiment/sac_halfcheetah_source.yaml
 ```
 
 `--device cuda:1` overrides the YAML. CUDA indices are relative to devices visible
@@ -343,209 +461,9 @@ execution, primarily for tests. The standalone evaluation CLI also defaults to
 device. Checkpoints can be loaded onto either device; CPU/GPU numerical results
 need not be bitwise identical. Existing CPU checkpoints remain loadable.
 
-Remote verification commands (not run locally):
+Remote verification commands:
 
 ```sh
 python -m pytest -q tests/test_device.py
 python scripts/train_sac_source.py --config configs/experiment/sac_smoke.yaml
 ```
-
-## Periodic checkpoints, continuation, W&B and videos
-
-New source runs save `checkpoints/latest.pt` initially and every
-`training.checkpoint_every` real transitions (10,000 in the source config).
-The runner writes a temporary file, flushes it, then atomically replaces latest.
-`final.pt` is also a full checkpoint. Both contain occupied replay slots and
-sampling RNG, MuJoCo integration state, wrapper elapsed steps, environment/space
-RNGs, current observation and unfinished episode return/length, in addition to
-all learner/optimizer/global RNG state. Saving two full checkpoints uses more
-disk space than the former learner-only checkpoint.
-
-`--resume PATH` restores that state into a new run directory and keeps counters.
-`real_env_steps` is the total target, not additional transitions. Algorithm,
-replay and environment settings must match; the step budget, device, logging,
-checkpoint interval and tracking settings can change. Gymnasium, MuJoCo, NumPy
-and PyTorch versions must match the saved versions. Same-state continuation is
-implemented, but cross-device/platform bitwise reproducibility is not promised.
-The split-run regression test must be run on the remote server before a long run.
-Older checkpoints without replay/simulator state cannot resume; CSV cannot
-reconstruct lost network parameters.
-
-SIGTERM or SIGUSR1 requests a save and exit after a completed interaction/update.
-Slurm can send an early signal, e.g. `#SBATCH --signal=USR1@120` in a batch job
-that launches the Python process via `srun`. Signal delivery depends on the site
-and launch method. SIGKILL cannot be handled: the previous atomic latest remains
-the recovery point, so periodic saving is the primary protection.
-
-W&B is opt-in: `--wandb online` or `--wandb offline`. Offline runs can later be
-uploaded with `wandb sync`. Configure `tracking.project` and optional `entity`.
-Metrics use `real_env_steps` as the x-axis. Each resumed segment creates a new
-W&B run in the same experiment/seed group, with its parent checkpoint recorded;
-it does not rewrite existing W&B history.
-
-With tracking enabled, every 50,000 transitions and at completion the runner
-records one deterministic episode each for source and target using the first
-configured evaluation seed. MP4s are streamed to `videos/` and logged as
-`video/source` and `video/target`. Recording uses separate factory environments
-and preserves learner RNG. It adds no training transitions or updates. These
-videos are qualitative samples; final multi-episode statistics are separate.
-`tracking.video_every: 0` disables recording. Rendering failures produce a
-warning and `video_errors.log` rather than discarding training progress.
-
-Headless NVIDIA rendering uses `MUJOCO_GL=egl`, set before Python starts. W&B
-shows uploaded videos; videos are rendered by MuJoCo on the server, not generated
-by W&B. See [W&B media logging](https://docs.wandb.ai/guides/track/log/) and
-[Gymnasium rendering](https://gymnasium.farama.org/environments/mujoco/).
-
-For the existing server2 environment, install only the new optional packages
-first, so its working PyTorch 2.5.1+cu121 is not replaced by the repository's
-2.14.0 pin:
-
-```sh
-cd ~/repos/DRL
-.venv/bin/python -m pip install 'wandb>=0.19,<1' 'imageio[ffmpeg]>=2.34,<3'
-.venv/bin/wandb login
-.venv/bin/python -m pytest -q tests/test_training_resume.py tests/test_tracking.py
-MUJOCO_GL=egl .venv/bin/python scripts/train_sac_source.py --config configs/experiment/sac_smoke.yaml --wandb online
-```
-
-This is a version deviation from the original lock, recorded in run metadata;
-remote regression tests are needed. Do not reinstall the full project with
-dependencies in that environment unless intentionally migrating PyTorch.
-
-New training:
-
-```sh
-MUJOCO_GL=egl .venv/bin/python scripts/train_sac_source.py --config configs/experiment/sac_halfcheetah_source.yaml --wandb online
-```
-
-Continue from an actual new-format checkpoint (replace the example path):
-
-```sh
-MUJOCO_GL=egl .venv/bin/python scripts/train_sac_source.py --config configs/experiment/sac_halfcheetah_source.yaml --wandb online --resume outputs/sac_halfcheetah_source/seed_0/RUN_ID/checkpoints/latest.pt
-```
-
-Local verification of this change is static only; no local training, W&B upload,
-GPU execution or video rendering was performed.
-
-## Single-event controller state and resume semantics
-
-Development continues with seed 0; additional million-transition or multi-seed
-training runs are not required for this controller milestone.
-
-`envs/shift_controller.py` adds `DynamicsShiftController(env, AbruptShiftSpec(...))`.
-The existing `DynamicsController` remains the sole owner of physical parameter
-mutations. This event controller is opt-in: the source SAC runner still trains
-only on nominal dynamics and does not attach a shift event.
-
-```python
-from dynamics_shift.envs import DynamicsShiftController, AbruptShiftSpec
-
-controller = DynamicsShiftController(env, AbruptShiftSpec(trigger_env_step=10_000))
-# Call before each env.step; real_env_steps counts already completed transitions.
-event = controller.maybe_shift(real_env_steps)  # ShiftEvent or None
-saved_state = controller.state_dict()  # {"fired": bool}; JSON serializable
-controller.load_state_dict(saved_state)
-```
-
-For trigger 10,000, the first 10,000 transitions use source dynamics; the next
-uses target dynamics. An unfired event fires at the first call at or beyond the
-trigger. A fired event never fires again, including across episode resets.
-`load_state_dict` restores source gear for `fired=False` and target gear for
-`fired=True`, always relative to immutable nominal gear. Restoring physical
-parameters is not counted as another event. Independent manual mutations are
-rejected by consistency checks. Invalid serialized flags are rejected before
-changing the environment.
-
-Existing `capture_training_state` and `restore_training_state` accept optional
-`shift_controller=controller`. The existing checkpoint payload then carries the
-boolean state plus the static event definition. Restore rejects a changed event
-configuration or an omitted controller and restores physical parameters before
-simulator integration state. Legacy checkpoints without event state remain
-usable without a controller; attaching an event to such a checkpoint is rejected
-rather than guessing whether it fired. No new checkpoint framework or adaptation
-runner was introduced.
-
-Controller-only tests (no SAC learning):
-
-```sh
-python -m pytest -q tests/test_shift_controller.py
-```
-
-
-The generic dynamics interface is `get_shift_parameter(parameter)` and
-`apply_dynamics_shift(parameter, value)`. Only `actuator_strength` is currently
-supported. MuJoCo maps it to the existing `set_actuator_scale`; gear consistency
-checks stay in the MuJoCo adapter. Existing actuator methods remain available.
-The event controller depends only on `DynamicsInterface`, not simulator fields.
-
-`AbruptShiftSpec(trigger_env_step, parameter="actuator_strength", source=1.0,
-target=0.7)` describes a planned change. A successful `maybe_shift` returns an
-immutable `ShiftEvent(env_step, parameter, old_value, new_value)` with the actual
-call step; no change returns `None`. No logging occurs inside the controller.
-The mutable checkpoint state remains only `{"fired": bool}`. Static specification
-is stored separately by the existing hook; mismatched specifications are rejected.
-Old nominal seed-0 checkpoints without a controller remain compatible. The former
-controller-spec field names are intentionally not inferred during restore;
-checkpoints carrying that old event-spec format fail the configuration check.
-
-## Frozen actuator-severity calibration (existing seed-0 checkpoint)
-
-This constant-condition analysis never runs source training or learner updates.
-It reads the actor from the specified checkpoint without constructing critics,
-optimizers or a SAC learner. The full checkpoint container must be deserialized,
-but non-actor training data is released after extracting provenance. The actor
-runs with gradients disabled and its entire state is checked for exact equality
-before/after the sweep. The source checkpoint hash is checked for equality too.
-
-`configs/experiment/frozen_actuator_severity.yaml` names the existing source run
-`20260929T101840_88b1c013/checkpoints/final.pt`, scales
-[1.00, 0.95, 0.90, 0.85, 0.80, 0.75, 0.70, 0.60], and matched seeds 100–109.
-Each factory environment receives one constant value through
-`apply_dynamics_shift("actuator_strength", value)`. No temporal event controller
-is constructed or fired. Episodes retain the stock 1,000-transition horizon.
-
-On server2, after syncing the code (no package migration needed):
-
-```sh
-cd /home/jhkim/repos/DRL
-.venv/bin/python -m pip install 'matplotlib>=3.9,<4'
-.venv/bin/python -m pytest -q tests/test_severity_sweep.py tests/test_shift_controller.py tests/test_actuator_shift.py tests/test_env_equivalence.py tests/test_mujoco_state.py tests/test_config.py
-.venv/bin/python scripts/sweep_sac_actuator.py --config configs/experiment/frozen_actuator_severity.yaml --checkpoint /home/jhkim/repos/DRL/outputs/sac_halfcheetah_source/seed_0/20260929T101840_88b1c013/checkpoints/final.pt
-```
-
-Outputs go only to a new timestamp/UUID directory under
-`outputs/shift_sweeps/sac_halfcheetah_actuator/seed_0/`:
-
-- `config.yaml`, `metadata.json`: exact checkpoint path/hash, source config and
-  counters, library versions, actual device, paired seeds, and no-learning guards;
-- `per_episode.csv`: raw returns, seed, episode ID, length and separate boundary flags;
-- `summary.csv`: descending scale, descriptive statistics, signed `absolute_drop`
-  (shifted minus nominal), relative return/drop, paired mean/SD;
-- `paired_differences.csv`: seed-matched shifted-minus-nominal values;
-- `actuator_return_curve.png`: mean ± population episode SD plus normalized return;
-- `analysis.json`: mean-curve monotonicity, adjacent changes, steepest negative
-  change per unit strength reduction, and differences from the earlier 1.0/0.7
-  reference means/SDs. No severity labels or statistical thresholds are assigned.
-
-Summary values are recomputed from the saved per-episode CSV. Ratios are left
-undefined when abs(nominal mean) <= 1e-12. Normalized error bars divide episode
-SD by abs(nominal mean); they are descriptive, not confidence intervals and do
-not propagate uncertainty in the denominator. Population SD uses ddof=0, matching
-the earlier evaluation. Reference differences are reported, not used to force
-agreement across devices/software versions. W&B is not required for this sweep;
-CSV files are authoritative and the original W&B/source run is not modified.
-
-The remote source checkpoint is not present in the local workspace. Local tests
-use small untrained actors solely to test inference and statistics, never as
-experimental substitutes. The eight trained-policy results must be obtained
-by the remote command above. No trained severity values have been inferred from
-the two historical reference points.
-
-## MBPO nominal implementation
-
-An MBPO runner now reuses the existing SAC learner with a probabilistic dynamics
-ensemble, separate synthetic replay and explicit real/model batch mixing.
-See [MBPO architecture, defaults, checkpoint semantics and remote smoke commands](docs/mbpo.md).
-The implementation is nominal-only. It does not modify the validated shift
-backend or existing seed-0 SAC artifacts. Full MBPO training is not authorized.
