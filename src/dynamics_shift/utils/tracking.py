@@ -20,6 +20,7 @@ class Tracker:
         self.run.define_metric("train/*", step_metric="real_env_steps")
         self.run.define_metric("eval/*", step_metric="real_env_steps")
         self.run.define_metric("video/*", step_metric="real_env_steps")
+        self.run.define_metric("model/*", step_metric="real_env_steps")
 
     def log(self, metrics: dict, real_env_steps: int) -> None:
         if self.run is not None:

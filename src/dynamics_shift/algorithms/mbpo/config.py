@@ -68,7 +68,7 @@ class MBPORunConfig:
     def from_dict(cls, raw: dict) -> "MBPORunConfig":
         values = _mapping(raw, set(cls.__dataclass_fields__))
         for key, kind in (("env", EnvConfig), ("dynamics", DynamicsConfig), ("algo", SACConfig),
-                          ("training", TrainingConfig), ("mbpo", MBPOConfig)):
+                          ("training", TrainingConfig), ("mbpo", MBPOConfig), ("tracking", TrackingConfig)):
             values[key] = kind(**_mapping(values.get(key, {}), set(kind.__dataclass_fields__)))
         return cls(**values)
 
