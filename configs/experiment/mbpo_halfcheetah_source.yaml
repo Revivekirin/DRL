@@ -23,3 +23,6 @@ tracking:
   entity: null
   video_every: 50000
   video_steps: 1000
+evaluation:
+  interval: 10000
+  episodes: 3
