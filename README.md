@@ -427,3 +427,117 @@ MUJOCO_GL=egl .venv/bin/python scripts/train_sac_source.py --config configs/expe
 
 Local verification of this change is static only; no local training, W&B upload,
 GPU execution or video rendering was performed.
+
+## Single-event controller state and resume semantics
+
+Development continues with seed 0; additional million-transition or multi-seed
+training runs are not required for this controller milestone.
+
+`envs/shift_controller.py` adds `DynamicsShiftController(env, AbruptShiftSpec(...))`.
+The existing `DynamicsController` remains the sole owner of physical parameter
+mutations. This event controller is opt-in: the source SAC runner still trains
+only on nominal dynamics and does not attach a shift event.
+
+```python
+from dynamics_shift.envs import DynamicsShiftController, AbruptShiftSpec
+
+controller = DynamicsShiftController(env, AbruptShiftSpec(trigger_env_step=10_000))
+# Call before each env.step; real_env_steps counts already completed transitions.
+event = controller.maybe_shift(real_env_steps)  # ShiftEvent or None
+saved_state = controller.state_dict()  # {"fired": bool}; JSON serializable
+controller.load_state_dict(saved_state)
+```
+
+For trigger 10,000, the first 10,000 transitions use source dynamics; the next
+uses target dynamics. An unfired event fires at the first call at or beyond the
+trigger. A fired event never fires again, including across episode resets.
+`load_state_dict` restores source gear for `fired=False` and target gear for
+`fired=True`, always relative to immutable nominal gear. Restoring physical
+parameters is not counted as another event. Independent manual mutations are
+rejected by consistency checks. Invalid serialized flags are rejected before
+changing the environment.
+
+Existing `capture_training_state` and `restore_training_state` accept optional
+`shift_controller=controller`. The existing checkpoint payload then carries the
+boolean state plus the static event definition. Restore rejects a changed event
+configuration or an omitted controller and restores physical parameters before
+simulator integration state. Legacy checkpoints without event state remain
+usable without a controller; attaching an event to such a checkpoint is rejected
+rather than guessing whether it fired. No new checkpoint framework or adaptation
+runner was introduced.
+
+Controller-only tests (no SAC learning):
+
+```sh
+python -m pytest -q tests/test_shift_controller.py
+```
+
+
+The generic dynamics interface is `get_shift_parameter(parameter)` and
+`apply_dynamics_shift(parameter, value)`. Only `actuator_strength` is currently
+supported. MuJoCo maps it to the existing `set_actuator_scale`; gear consistency
+checks stay in the MuJoCo adapter. Existing actuator methods remain available.
+The event controller depends only on `DynamicsInterface`, not simulator fields.
+
+`AbruptShiftSpec(trigger_env_step, parameter="actuator_strength", source=1.0,
+target=0.7)` describes a planned change. A successful `maybe_shift` returns an
+immutable `ShiftEvent(env_step, parameter, old_value, new_value)` with the actual
+call step; no change returns `None`. No logging occurs inside the controller.
+The mutable checkpoint state remains only `{"fired": bool}`. Static specification
+is stored separately by the existing hook; mismatched specifications are rejected.
+Old nominal seed-0 checkpoints without a controller remain compatible. The former
+controller-spec field names are intentionally not inferred during restore;
+checkpoints carrying that old event-spec format fail the configuration check.
+
+## Frozen actuator-severity calibration (existing seed-0 checkpoint)
+
+This constant-condition analysis never runs source training or learner updates.
+It reads the actor from the specified checkpoint without constructing critics,
+optimizers or a SAC learner. The full checkpoint container must be deserialized,
+but non-actor training data is released after extracting provenance. The actor
+runs with gradients disabled and its entire state is checked for exact equality
+before/after the sweep. The source checkpoint hash is checked for equality too.
+
+`configs/experiment/frozen_actuator_severity.yaml` names the existing source run
+`20260929T101840_88b1c013/checkpoints/final.pt`, scales
+[1.00, 0.95, 0.90, 0.85, 0.80, 0.75, 0.70, 0.60], and matched seeds 100–109.
+Each factory environment receives one constant value through
+`apply_dynamics_shift("actuator_strength", value)`. No temporal event controller
+is constructed or fired. Episodes retain the stock 1,000-transition horizon.
+
+On server2, after syncing the code (no package migration needed):
+
+```sh
+cd /home/jhkim/repos/DRL
+.venv/bin/python -m pip install 'matplotlib>=3.9,<4'
+.venv/bin/python -m pytest -q tests/test_severity_sweep.py tests/test_shift_controller.py tests/test_actuator_shift.py tests/test_env_equivalence.py tests/test_mujoco_state.py tests/test_config.py
+.venv/bin/python scripts/sweep_sac_actuator.py --config configs/experiment/frozen_actuator_severity.yaml --checkpoint /home/jhkim/repos/DRL/outputs/sac_halfcheetah_source/seed_0/20260929T101840_88b1c013/checkpoints/final.pt
+```
+
+Outputs go only to a new timestamp/UUID directory under
+`outputs/shift_sweeps/sac_halfcheetah_actuator/seed_0/`:
+
+- `config.yaml`, `metadata.json`: exact checkpoint path/hash, source config and
+  counters, library versions, actual device, paired seeds, and no-learning guards;
+- `per_episode.csv`: raw returns, seed, episode ID, length and separate boundary flags;
+- `summary.csv`: descending scale, descriptive statistics, signed `absolute_drop`
+  (shifted minus nominal), relative return/drop, paired mean/SD;
+- `paired_differences.csv`: seed-matched shifted-minus-nominal values;
+- `actuator_return_curve.png`: mean ± population episode SD plus normalized return;
+- `analysis.json`: mean-curve monotonicity, adjacent changes, steepest negative
+  change per unit strength reduction, and differences from the earlier 1.0/0.7
+  reference means/SDs. No severity labels or statistical thresholds are assigned.
+
+Summary values are recomputed from the saved per-episode CSV. Ratios are left
+undefined when abs(nominal mean) <= 1e-12. Normalized error bars divide episode
+SD by abs(nominal mean); they are descriptive, not confidence intervals and do
+not propagate uncertainty in the denominator. Population SD uses ddof=0, matching
+the earlier evaluation. Reference differences are reported, not used to force
+agreement across devices/software versions. W&B is not required for this sweep;
+CSV files are authoritative and the original W&B/source run is not modified.
+
+The remote source checkpoint is not present in the local workspace. Local tests
+use small untrained actors solely to test inference and statistics, never as
+experimental substitutes. The eight trained-policy results must be obtained
+by the remote command above. No trained severity values have been inferred from
+the two historical reference points.

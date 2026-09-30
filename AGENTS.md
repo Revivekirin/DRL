@@ -6,3 +6,8 @@
   Do not run the entire pytest suite locally: it contains these tests.
 - Local static checks and inspections are allowed. State clearly which checks
   were performed and which commands are provided for remote execution.
+
+# Development scope
+
+- Continue development with seed 0. Do not launch or recommend additional
+  million-transition or multi-seed training runs unless explicitly requested.

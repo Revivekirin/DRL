@@ -42,6 +42,19 @@ class DynamicsController(gym.Wrapper):
     def get_parameters(self) -> dict[str, float]:
         return {"actuator_scale": self._actuator_scale}
 
+    def get_shift_parameter(self, parameter: str) -> float:
+        if parameter != "actuator_strength":
+            raise ValueError(f"Unsupported dynamics parameter: {parameter}")
+        if not np.array_equal(self.unwrapped.model.actuator_gear,
+                              self._nominal_gear * self._actuator_scale):
+            raise ValueError("MuJoCo actuator gear disagrees with its tracked scale")
+        return self._actuator_scale
+
+    def apply_dynamics_shift(self, parameter: str, value: float) -> None:
+        if parameter != "actuator_strength":
+            raise ValueError(f"Unsupported dynamics parameter: {parameter}")
+        self.set_actuator_scale(value)
+
     def set_actuator_scale(self, scale: float) -> None:
         scale = validate_scale(scale)
         model, data = self.unwrapped.model, self.unwrapped.data

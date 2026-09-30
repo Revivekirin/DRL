@@ -52,3 +52,30 @@ def test_effective_joint_torque(env):
     np.testing.assert_array_equal(base.model.actuator_ctrlrange, ctrlrange)
     np.testing.assert_array_equal(base.model.body_mass, mass)
     np.testing.assert_array_equal(base.model.dof_damping, damping)
+
+
+def test_generic_strength_matches_existing_api(env):
+    env.set_actuator_scale(.7)
+    expected = env.unwrapped.model.actuator_gear.copy()
+    env.reset_to_nominal()
+    env.apply_dynamics_shift("actuator_strength", .7)
+    env.apply_dynamics_shift("actuator_strength", .7)
+    np.testing.assert_array_equal(env.unwrapped.model.actuator_gear, expected)
+    assert env.get_shift_parameter("actuator_strength") == .7
+    assert env.get_parameters() == {"actuator_scale": .7}
+    env.reset_to_nominal()
+    assert env.get_shift_parameter("actuator_strength") == 1.
+
+
+def test_generic_interface_rejects_unknown_and_detects_gear_mismatch(env):
+    before = env.unwrapped.model.actuator_gear.copy()
+    with pytest.raises(ValueError, match="Unsupported"):
+        env.apply_dynamics_shift("mass", 1.5)
+    with pytest.raises(ValueError, match="Unsupported"):
+        env.get_shift_parameter("mass")
+    np.testing.assert_array_equal(before, env.unwrapped.model.actuator_gear)
+    env.unwrapped.model.actuator_gear[0, 0] += 1  # Deliberate corruption, adapter test only.
+    with pytest.raises(ValueError, match="gear disagrees"):
+        env.get_shift_parameter("actuator_strength")
+    env.reset_to_nominal()
+    assert env.get_shift_parameter("actuator_strength") == 1.
