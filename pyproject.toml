@@ -17,7 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest==9.1.1"]
-tracking = ["wandb>=0.19,<1", "imageio[ffmpeg]>=2.34,<3"]
+tracking = ["wandb>=0.19,<1", "imageio[ffmpeg]>=2.34,<3", "moviepy>=2,<3"]
 analysis = ["matplotlib>=3.9,<4"]
 
 [tool.setuptools.packages.find]

@@ -32,6 +32,7 @@ from dynamics_shift.config import ExperimentConfig
 from dynamics_shift.envs import make_env
 from dynamics_shift.utils.device import check_device
 from dynamics_shift.utils.tracking import Tracker
+from dynamics_shift.algorithms.mbpo.monitoring import RolloutDiagnostics, normalization_checks, evaluate_nominal
 from dynamics_shift.utils.checkpoint import capture_rng, restore_rng
 from dynamics_shift.utils.training_state import restore_training_state
 from dynamics_shift.experiments.train_sac_source import _git_metadata
@@ -59,6 +60,7 @@ def train_mbpo_source(
             # Tracking settings do not alter the learning algorithm.
             # This allows, for example, offline -> online W&B on resume.
             settings.pop("tracking", None)
+            settings.pop("evaluation", None)
 
             for key in (
                 "real_env_steps",
@@ -120,6 +122,7 @@ def train_mbpo_source(
         "environment": config.env.id,
         "actuator_strength": 1.0,
         "device": str(device),
+        "cuda_build": torch.version.cuda,
         "started_at": datetime.now(timezone.utc).isoformat(),
         "versions": {
             name: version(name)
@@ -271,6 +274,11 @@ def train_mbpo_source(
             learner.device,
         )
 
+        if tracker.run is not None:
+            tracker.run.config.update({"runtime": metadata})
+            metadata["wandb_url"] = tracker.run.url
+            metadata["wandb_name"] = tracker.run.name
+
         # --------------------------------------------------------------
         # Checkpoint helper
         # --------------------------------------------------------------
@@ -337,6 +345,8 @@ def train_mbpo_source(
                 "x",
                 newline="",
             ) as model_file,
+            (run / "metrics/model_refits.jsonl").open("x") as refit_file,
+            (run / "metrics/evaluation.jsonl").open("x") as evaluation_file,
             tqdm(
                 total=config.training.real_env_steps,
                 initial=counters["real_env_steps"],
@@ -464,6 +474,7 @@ def train_mbpo_source(
                     # --------------------------------------------------
                     synthetic.clear()
 
+                    diagnostics = RolloutDiagnostics()
                     generated = generate_rollouts(
                         learner,
                         model,
@@ -472,6 +483,7 @@ def train_mbpo_source(
                         config.mbpo.rollout_batch_size,
                         config.mbpo.rollout_horizon,
                         rng,
+                        diagnostics=diagnostics,
                     )
 
                     counters[
@@ -481,6 +493,18 @@ def train_mbpo_source(
                     # --------------------------------------------------
                     # W&B: dynamics model / rollout diagnostics
                     # --------------------------------------------------
+                    diagnostic_metrics = {**normalization_checks(model), **diagnostics.summary()}
+                    refit_record = {"real_env_steps": current, **metrics, **diagnostic_metrics,
+                                    "elite_indices": [int(i) for i in model.elites],
+                                    "dynamics_model_refit_count": model.refit_count,
+                                    "dynamics_model_train_steps": model.train_steps}
+                    refit_file.write(json.dumps(refit_record) + "\n")
+                    refit_file.flush()
+                    tracker.log({**counters, **{f"model/{k}": v for k, v in diagnostic_metrics.items()},
+                                 **{f"model/member_{i}/{key}": metrics[key][i]
+                                    for i in range(config.mbpo.ensemble_size)
+                                    for key in ("model_train_loss", "model_validation_loss", "model_validation_rmse")},
+                                 **{f"model/elite_{i}": int(e) for i, e in enumerate(model.elites)}}, current)
                     elite_indices = list(model.elites)
 
                     model_train_loss_mean = float(
@@ -534,19 +558,19 @@ def train_mbpo_source(
 
                     tracker.log(
                         {
-                            "train/model_train_loss_mean":
+                            "model/train_loss_mean":
                                 model_train_loss_mean,
 
-                            "train/model_validation_loss_mean":
+                            "model/validation_loss_mean":
                                 model_validation_loss_mean,
 
-                            "train/model_validation_rmse_mean":
+                            "model/validation_rmse_mean":
                                 model_validation_rmse_mean,
 
-                            "train/model_elite_validation_loss_mean":
+                            "model/elite_validation_loss_mean":
                                 elite_validation_loss_mean,
 
-                            "train/model_elite_validation_rmse_mean":
+                            "model/elite_validation_rmse_mean":
                                 elite_validation_rmse_mean,
 
                             "train/dynamics_model_train_steps":
@@ -559,17 +583,17 @@ def train_mbpo_source(
                                     "dynamics_model_refit_count"
                                 ],
 
-                            "train/model_train_samples":
+                            "model/train_samples":
                                 int(
                                     metrics["train_samples"]
                                 ),
 
-                            "train/model_holdout_samples":
+                            "model/holdout_samples":
                                 int(
                                     metrics["holdout_samples"]
                                 ),
 
-                            "train/model_training_seconds":
+                            "model/training_seconds":
                                 model_seconds,
 
                             "train/generated_transitions":
@@ -580,7 +604,7 @@ def train_mbpo_source(
                                     "synthetic_transition_count"
                                 ],
 
-                            "train/model_replay_size":
+                            "model/replay_size":
                                 len(synthetic),
                         },
                         current,
@@ -608,6 +632,8 @@ def train_mbpo_source(
                         )
 
                         losses = learner.update(batch)
+                        if not all(np.isfinite(value) for value in losses.values()):
+                            raise FloatingPointError(f"Nonfinite SAC metrics at real_env_steps={current}: {losses}")
 
                         counters[
                             "real_policy_samples"
@@ -674,6 +700,7 @@ def train_mbpo_source(
 
                     tracker.log(
                         {
+                            **counters,
                             "train/policy_gradient_steps":
                                 counters[
                                     "policy_gradient_steps"
@@ -685,7 +712,7 @@ def train_mbpo_source(
                             "train/real_replay_size":
                                 len(real),
 
-                            "train/model_replay_size":
+                            "model/replay_size":
                                 len(synthetic),
 
                             "train/dynamics_model_train_steps":
@@ -713,7 +740,7 @@ def train_mbpo_source(
                                     "synthetic_policy_samples"
                                 ],
 
-                            "train/model_training_seconds":
+                            "model/training_seconds":
                                 model_seconds,
 
                             "train/elapsed_seconds":
@@ -759,6 +786,15 @@ def train_mbpo_source(
                     episode_return = 0.0
                     episode_length = 0
 
+                video_due = (tracker.run is not None and config.tracking.video_every > 0
+                             and current % config.tracking.video_every == 0)
+                eval_due = config.evaluation.interval > 0 and current % config.evaluation.interval == 0
+                if video_due or eval_due or current == config.training.real_env_steps:
+                    evaluation = evaluate_nominal(learner, config, tracker, run, current, record_video=video_due)
+                    evaluation_file.write(json.dumps({"real_env_steps": current, **evaluation}) + "\n")
+                    evaluation_file.flush()
+                    metadata["final_evaluation"] = evaluation
+
                 progress.update(1)
 
                 # ------------------------------------------------------
@@ -770,6 +806,8 @@ def train_mbpo_source(
                     == 0
                     or stopped
                 ):
+                    if current % config.training.checkpoint_every == 0:
+                        save(run / f"checkpoints/step_{current}.pt")
                     save(
                         latest,
                         overwrite=True,

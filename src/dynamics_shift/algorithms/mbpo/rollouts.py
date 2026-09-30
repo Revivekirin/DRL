@@ -8,7 +8,7 @@ from dynamics_shift.algorithms.sac.learner import SACLearner
 
 def generate_rollouts(learner: SACLearner, model: ProbabilisticEnsemble,
                       real: RealReplayBuffer, synthetic: ModelReplayBuffer,
-                      batch_size: int, horizon: int, rng: np.random.Generator) -> int:
+                      batch_size: int, horizon: int, rng: np.random.Generator, *, diagnostics=None) -> int:
     """HalfCheetah-v5 has no physical terminal condition.
 
     Model horizon is a computation cutoff, not an environment TimeLimit; both
@@ -24,6 +24,8 @@ def generate_rollouts(learner: SACLearner, model: ProbabilisticEnsemble,
     for _ in range(horizon):
         actions = learner.act(obs, deterministic=False)
         means, variances = model.predict(np.concatenate((obs, actions), axis=-1))
+        if not np.isfinite(means).all() or not np.isfinite(variances).all():
+            raise FloatingPointError("Nonfinite ensemble prediction during model rollout")
         # TS1: independently choose an elite for each transition at every depth.
         members = rng.choice(model.elites, size=batch_size)
         selected_mean = means[members, np.arange(batch_size)]
@@ -31,6 +33,8 @@ def generate_rollouts(learner: SACLearner, model: ProbabilisticEnsemble,
         predictions = selected_mean + np.sqrt(selected_var) * rng.standard_normal(selected_mean.shape)
         next_obs = (obs + predictions[:, :model.obs_dim]).astype(np.float32)
         rewards = predictions[:, -1].astype(np.float32)
+        if diagnostics is not None:
+            diagnostics.observe(obs, next_obs, rewards, means, model.elites)
         if not np.isfinite(next_obs).all() or not np.isfinite(rewards).all():
             raise FloatingPointError("Nonfinite model rollout; no silent clipping or fallback")
         for o, a, r, no in zip(obs, actions, rewards, next_obs, strict=True):

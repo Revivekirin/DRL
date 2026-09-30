@@ -43,6 +43,19 @@ class MBPOConfig:
 
 
 @dataclass(frozen=True)
+class NominalEvaluationConfig:
+    interval: int = 10000
+    episodes: int = 3
+    seed: int = 10000
+
+    def __post_init__(self):
+        if type(self.interval) is not int or self.interval < 0:
+            raise ValueError("evaluation.interval must be nonnegative")
+        if type(self.episodes) is not int or self.episodes < 1:
+            raise ValueError("evaluation.episodes must be positive")
+
+
+@dataclass(frozen=True)
 class MBPORunConfig:
     name: str = "mbpo_halfcheetah_source"
     seed: int = 0
@@ -52,6 +65,7 @@ class MBPORunConfig:
     training: TrainingConfig = field(default_factory=TrainingConfig)
     mbpo: MBPOConfig = field(default_factory=MBPOConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
+    evaluation: NominalEvaluationConfig = field(default_factory=NominalEvaluationConfig)
 
     def __post_init__(self) -> None:
         RunConfig(name=self.name, seed=self.seed, env=self.env, dynamics=self.dynamics,
@@ -68,7 +82,7 @@ class MBPORunConfig:
     def from_dict(cls, raw: dict) -> "MBPORunConfig":
         values = _mapping(raw, set(cls.__dataclass_fields__))
         for key, kind in (("env", EnvConfig), ("dynamics", DynamicsConfig), ("algo", SACConfig),
-                          ("training", TrainingConfig), ("mbpo", MBPOConfig), ("tracking", TrackingConfig)):
+                          ("training", TrainingConfig), ("mbpo", MBPOConfig), ("tracking", TrackingConfig), ("evaluation", NominalEvaluationConfig)):
             values[key] = kind(**_mapping(values.get(key, {}), set(kind.__dataclass_fields__)))
         return cls(**values)
 
