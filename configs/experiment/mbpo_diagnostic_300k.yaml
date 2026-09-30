@@ -1,4 +1,4 @@
-name: mbpo_diagnostic_30k
+name: mbpo_diagnostic_300k
 seed: 0
 env:
   id: HalfCheetah-v5
@@ -8,7 +8,7 @@ algo: ../algo/sac.yaml
 mbpo: ../algo/mbpo.yaml
 training:
   device: cuda:0
-  real_env_steps: 30000
+  real_env_steps: 300000
   batch_size: 256
   replay_capacity: 1000000
   learning_starts: 10000

@@ -14,10 +14,10 @@ from dynamics_shift.utils.tracking import Tracker
 
 def test_full_diagnostic_parameters():
     full = load_mbpo_config('configs/experiment/mbpo_halfcheetah_source.yaml')
-    diagnostic = load_mbpo_config('configs/experiment/mbpo_diagnostic_30k.yaml')
+    diagnostic = load_mbpo_config('configs/experiment/mbpo_diagnostic_300k.yaml')
     assert full.mbpo == diagnostic.mbpo
     assert full.algo == diagnostic.algo
-    assert replace(full.training, real_env_steps=30000) == diagnostic.training
+    assert replace(full.training, real_env_steps=300000) == diagnostic.training
 
 
 def test_frame_conversion():
