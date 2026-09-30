@@ -17,6 +17,7 @@ from tqdm import tqdm
 
 from dynamics_shift.algorithms.sac.learner import SACLearner
 from dynamics_shift.algorithms.mbpo.config import MBPORunConfig
+from dynamics_shift.algorithms.mbpo.resume import validate_resume_config
 from dynamics_shift.algorithms.mbpo.rollouts import generate_rollouts, mixed_batch
 from dynamics_shift.algorithms.mbpo.checkpoint import (
     save_mbpo_checkpoint,
@@ -53,32 +54,9 @@ def train_mbpo_source(
     # Resume compatibility check
     # ------------------------------------------------------------------
     if restored:
-        old = MBPORunConfig.from_dict(restored[2]["config"]).to_dict()
-        new = config.to_dict()
-
-        for settings in (old, new):
-            # Tracking settings do not alter the learning algorithm.
-            # This allows, for example, offline -> online W&B on resume.
-            settings.pop("tracking", None)
-            settings.pop("evaluation", None)
-
-            for key in (
-                "real_env_steps",
-                "device",
-                "torch_threads",
-                "log_every",
-                "checkpoint_every",
-            ):
-                settings["training"].pop(key)
-
-        if (
-            old != new
-            or restored[2]["counters"]["real_env_steps"]
-            > config.training.real_env_steps
-        ):
-            raise ValueError(
-                "Resume config differs or total budget precedes checkpoint"
-            )
+        validate_resume_config(
+            restored[2]["config"], config, restored[2]["counters"]["real_env_steps"]
+        )
 
     # ------------------------------------------------------------------
     # Run directory
