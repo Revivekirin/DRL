@@ -16,6 +16,8 @@ def main() -> None:
     parser.add_argument("--no-progress", action="store_true")
     args = parser.parse_args()
     config = load_mbpo_config(args.config)
+    if args.wandb is not None:
+        config = replace(config, tracking=replace(config.tracking, mode=args.wandb))
     if args.device:
         config = replace(config, training=replace(config.training, device=args.device))
     if args.check_device_only:
