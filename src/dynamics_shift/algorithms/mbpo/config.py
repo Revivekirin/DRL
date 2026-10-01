@@ -21,8 +21,8 @@ class MBPOConfig:
     model_max_samples: int = 100000
     holdout_ratio: float = 0.2
     rollout_horizon: int = 1
-    rollout_batch_size: int = 10000
-    model_replay_capacity: int = 100000
+    rollout_batch_size: int = 100000
+    model_replay_capacity: int = 400000
     real_ratio: float = 0.05
 
     def __post_init__(self) -> None:

@@ -9,6 +9,6 @@ model_patience: 5
 model_max_samples: 100000
 holdout_ratio: 0.2
 rollout_horizon: 1
-rollout_batch_size: 10000
-model_replay_capacity: 100000
+rollout_batch_size: 100000
+model_replay_capacity: 400000
 real_ratio: 0.05

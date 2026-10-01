@@ -1,3 +1,4 @@
+import pytest
 from copy import deepcopy
 import math
 from unittest.mock import patch
@@ -20,6 +21,7 @@ def make_batch():
                            np.zeros((16, 1), bool), np.ones((16, 1), bool))
 
 
+@pytest.mark.training
 def test_updates_all_parameters_and_polyak():
     learner = make_learner()
     old_actor = deepcopy(learner.actor.state_dict())
@@ -38,6 +40,7 @@ def test_updates_all_parameters_and_polyak():
     assert all(p.grad is None for p in learner.target_critic.parameters())
 
 
+@pytest.mark.training
 def test_terminal_mask_and_entropy_bellman_equation():
     learner = make_learner()
     with patch.object(learner.actor, "sample", return_value=(torch.zeros(2, 2), torch.full((2, 1), -2.))), \

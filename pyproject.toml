@@ -26,3 +26,5 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+markers = ["training: runs model fitting or learner updates; requires --run-training on the remote server"]

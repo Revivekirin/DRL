@@ -1,10 +1,28 @@
 # Dynamics-shift MuJoCo benchmark
 
 Research objective: a controlled study of policy/model behavior under physical
-dynamics shifts. **Current protocol status: validated environment plus SAC smoke pipeline.**
+dynamics shifts. The repository includes validated shift infrastructure, a shared
+SAC learner, frozen SAC evaluation and MBPO source training.
 The current benchmark is **HalfCheetah-v5**, with an **actuator-strength shift**
 from scale 1.0 to 0.7. A shared SAC learner and frozen paired evaluation are implemented.
-Only smoke training has been run; trained-policy degradation has not been established.
+SAC seed-0 source training and severity calibration have been completed remotely.
+MBPO replay retention has been corrected; the next run is a fresh seed-0 20k
+diagnostic. See [MBPO workflow](docs/mbpo.md) and [config guide](configs/README.md).
+Historical validation results below describe their original milestones.
+
+## Test execution
+
+Tests that fit models or update learners require explicit remote opt-in:
+
+```bash
+# Local: inference, configuration and lightweight environment checks
+python -m pytest -q -m "not training"
+# Remote only: includes training tests
+python -m pytest -q --run-training
+```
+
+Smoke configs live in `configs/testing/`. They remain regression fixtures,
+not source-training presets. Existing outputs and checkpoint paths are unchanged.
 
 ## Install and run
 
@@ -80,7 +98,7 @@ CUDA tensor test: 1000.0
 Then run:
 
 ```sh
-python -m pytest -q
+python -m pytest -q -m "not training"
 python scripts/verify_actuator_shift.py
 ```
 
@@ -267,7 +285,7 @@ bootstrapping; TimeLimit truncations do not. Both trigger episode reset.
 Small validation run (on the remote server):
 
 ```sh
-python scripts/train_sac_source.py --config configs/experiment/sac_smoke.yaml
+python scripts/train_sac_source.py --config configs/testing/sac_smoke.yaml
 ```
 
 The smoke config uses 64 real transitions, 16 initial random actions, batch size
@@ -366,14 +384,17 @@ parameter changes, exact Polyak arithmetic, terminal target masking, continued
 bootstrapping at truncation, action bounds, log-density correction including
 saturated tails, checkpoint optimizer/RNG restoration, repeatable deterministic
 evaluation, unchanged learner/optimizer states during evaluation, and CPU smoke
-training with unique output directories. Run `python -m pytest -q`.
+training with unique output directories. Local checks use
+`python -m pytest -q -m "not training"`; training checks require the remote
+command `python -m pytest -q --run-training`.
 
 Latest command-line smoke validation: 64 real transitions, 49 policy-gradient
 steps, zero completed training episodes, and two evaluation episodes per
 condition. Nominal mean return was -6.8942569365; shifted mean return was
 -6.6842830539; delta was +0.2099738826. A separate checkpoint-evaluation command
 reproduced the same results. This smoke policy did not show return degradation.
-The complete suite passes 32 tests. No long source-training run was launched.
+At that historical milestone, the complete suite passed 32 tests and no long
+source-training run had been launched.
 
 ## Remote training and terminal progress
 
@@ -409,8 +430,8 @@ active. Checkpoint saving and the start of frozen evaluation are also announced.
 For remote smoke validation:
 
 ```sh
-python -m pytest -q
-python scripts/train_sac_source.py --config configs/experiment/sac_smoke.yaml
+python -m pytest -q --run-training
+python scripts/train_sac_source.py --config configs/testing/sac_smoke.yaml
 ```
 
 ## GPU preflight (remote server)
@@ -464,6 +485,6 @@ need not be bitwise identical. Existing CPU checkpoints remain loadable.
 Remote verification commands:
 
 ```sh
-python -m pytest -q tests/test_device.py
-python scripts/train_sac_source.py --config configs/experiment/sac_smoke.yaml
+python -m pytest -q -m "not training" tests/test_device.py
+python scripts/train_sac_source.py --config configs/testing/sac_smoke.yaml
 ```

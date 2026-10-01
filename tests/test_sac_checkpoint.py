@@ -22,6 +22,7 @@ def assert_nested_equal(left, right):
         assert left == right
 
 
+@pytest.mark.training
 def test_checkpoint_actions_optimizer_continuation_and_rng(tmp_path):
     torch.manual_seed(0)
     learner = SACLearner(3, -np.ones(2), np.ones(2), SACConfig(hidden_dims=(16,)))

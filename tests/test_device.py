@@ -23,6 +23,7 @@ def test_cuda_kernel_failure_is_reported():
             check_device("cuda:0")
 
 
+@pytest.mark.training
 def test_cuda_update_checkpoint_roundtrip(tmp_path):
     if not torch.cuda.is_available():
         pytest.skip("Requires a CUDA server")

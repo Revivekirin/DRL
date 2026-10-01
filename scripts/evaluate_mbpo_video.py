@@ -13,7 +13,7 @@ from dynamics_shift.utils.tracking import Tracker
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--checkpoint', required=True)
-    parser.add_argument('--config', default='configs/experiment/mbpo_video_smoke.yaml')
+    parser.add_argument('--config', default='configs/testing/mbpo_video_smoke.yaml')
     args = parser.parse_args()
     config = load_mbpo_config(args.config)
     config = replace(config, tracking=replace(config.tracking, mode='online'))

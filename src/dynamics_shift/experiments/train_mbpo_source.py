@@ -448,9 +448,8 @@ def train_mbpo_source(
                     model_file.flush()
 
                     # --------------------------------------------------
-                    # Discard stale synthetic samples after refit
+                    # Append fresh samples; ring storage evicts the oldest samples.
                     # --------------------------------------------------
-                    synthetic.clear()
 
                     diagnostics = RolloutDiagnostics()
                     generated = generate_rollouts(

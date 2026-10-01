@@ -1,3 +1,4 @@
+import pytest
 """REMOTE ONLY: model fitting, shared SAC updates and short nominal smoke run."""
 from dataclasses import replace
 from pathlib import Path
@@ -15,6 +16,7 @@ from dynamics_shift.experiments.train_mbpo_source import train_mbpo_source
 from test_mbpo_inference import real_data
 
 
+@pytest.mark.training
 def test_model_fit_normalization_checkpoint_and_shared_update(tmp_path):
     torch.set_num_threads(1)
     real = real_data()
@@ -50,8 +52,9 @@ def test_model_fit_normalization_checkpoint_and_shared_update(tmp_path):
     assert all(np.isfinite(v) for v in learner.update(batch).values())
 
 
+@pytest.mark.training
 def test_nominal_mbpo_smoke_and_resume(tmp_path):
-    config = load_mbpo_config(Path(__file__).parents[1] / "configs/experiment/mbpo_smoke.yaml")
+    config = load_mbpo_config(Path(__file__).parents[1] / "configs/testing/mbpo_smoke.yaml")
     config = replace(config, training=replace(config.training, device="cpu"))
     with patch("dynamics_shift.envs.DynamicsShiftController.__init__", side_effect=AssertionError("No shift events")):
         run = train_mbpo_source(config, tmp_path, show_progress=False)
@@ -64,6 +67,7 @@ def test_nominal_mbpo_smoke_and_resume(tmp_path):
     learner, model, payload = load_mbpo_checkpoint(run / "checkpoints/final.pt")
     assert model.train_steps == metadata["dynamics_model_train_steps"] > 0
     assert payload["training_state"]["mbpo"]["data_sources"]["real"] == "real_source"
+    assert payload["training_state"]["mbpo"]["synthetic_replay"]["size"] == 24
     frozen = load_frozen_model(run / "checkpoints/final.pt")
     assert not any(p.requires_grad for p in frozen.members.parameters())
     inputs = np.zeros((2, 23), np.float32)

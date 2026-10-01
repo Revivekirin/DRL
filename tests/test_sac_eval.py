@@ -10,6 +10,7 @@ from dynamics_shift.evaluation.policy_eval import assert_matching_contract, eval
 from test_sac_checkpoint import assert_nested_equal
 
 
+@pytest.mark.training
 def test_frozen_deterministic_paired_evaluation():
     learner = SACLearner(17, -np.ones(6), np.ones(6), SACConfig(hidden_dims=(16,)))
     # Populate optimizer state before proving that evaluation leaves it untouched.
