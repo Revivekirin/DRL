@@ -49,8 +49,10 @@ class SACLearner:
         """TimeLimit truncation still bootstraps from the stored final observation."""
         action, log_prob = self.actor.sample(next_obs)
         q1, q2 = self.target_critic(next_obs, action)
-        return reward + self.config.gamma * (1 - terminated) * (
-            torch.minimum(q1, q2) - self.alpha * log_prob)
+        return reward + self.config.gamma * (
+            torch.minimum(q1, q2)
+            - self.alpha * log_prob
+        )
 
     def update(self, batch: TransitionBatch) -> dict[str, float]:
         tensors = {name: torch.as_tensor(np.asarray(value), dtype=torch.float32, device=self.device)
@@ -82,7 +84,13 @@ class SACLearner:
         finally:
             self.critic.requires_grad_(True)
 
-        alpha_loss = -(self.log_alpha * (log_prob.detach() + self.target_entropy)).mean()
+        alpha_loss = -(
+            self.alpha
+            * (
+                log_prob.detach()
+                + self.target_entropy
+            )
+        ).mean()
         self.alpha_optimizer.zero_grad(set_to_none=True)
         alpha_loss.backward()
         self.alpha_optimizer.step()

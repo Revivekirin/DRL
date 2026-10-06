@@ -5,6 +5,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+LOG_STD_MIN = -5
+LOG_STD_MAX = 2
 
 def mlp(sizes: tuple[int, ...]) -> nn.Sequential:
     layers = []
@@ -26,9 +28,18 @@ class GaussianActor(nn.Module):
         self.register_buffer("action_scale", torch.as_tensor((high - low) / 2))
         self.register_buffer("action_bias", torch.as_tensor((high + low) / 2))
 
-    def forward(self, obs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, obs):
         mean, log_std = self.net(obs).chunk(2, dim=-1)
-        return mean, log_std.clamp(-20, 2)
+
+        log_std = torch.tanh(log_std)
+        log_std = (
+            LOG_STD_MIN
+            + 0.5
+            * (LOG_STD_MAX - LOG_STD_MIN)
+            * (log_std + 1.0)
+        )
+
+        return mean, log_std
 
     def deterministic(self, obs: torch.Tensor) -> torch.Tensor:
         mean, _ = self(obs)

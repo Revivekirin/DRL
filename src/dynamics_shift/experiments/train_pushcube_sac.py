@@ -32,8 +32,11 @@ from dynamics_shift.config import ExperimentConfig
 from dynamics_shift.data.replay_buffer import ReplayBuffer
 from dynamics_shift.envs import make_env
 from dynamics_shift.evaluation.contracts import episode_horizon
+from dynamics_shift.utils.tracking import Tracker
 from dynamics_shift.utils.checkpoint import (
+    capture_rng,
     load_checkpoint,
+    restore_rng,
     save_checkpoint,
 )
 from dynamics_shift.utils.device import check_device

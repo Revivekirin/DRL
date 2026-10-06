@@ -89,7 +89,7 @@ def make_maniskill_env(
             env = ManiSkillVectorEnv(
                 env,
                 settings.num_envs,
-                ignore_terminations=False,
+                ignore_terminations=True,
                 record_metrics=True,
             )
 
