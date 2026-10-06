@@ -1,4 +1,4 @@
-"""HalfCheetah environment construction and simulator utilities."""
+"""Environment construction and dynamics intervention interfaces."""
 from .factory import make_env
 from .shift_controller import DynamicsShiftController, AbruptShiftSpec, ShiftEvent
 

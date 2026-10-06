@@ -1,0 +1,10 @@
+env:
+  backend: maniskill
+  id: PushCube-v1
+  obs_mode: state
+  robot_uids: panda
+  control_mode: pd_joint_delta_pos
+  reward_mode: normalized_dense
+  sim_backend: cpu
+  num_envs: 1
+seed: 0

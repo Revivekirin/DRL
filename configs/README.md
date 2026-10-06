@@ -6,6 +6,12 @@
 | `experiment/` | Source training and frozen evaluation presets |
 | `testing/` | Small regression runs and video integration checks; remote only |
 | Top-level HalfCheetah YAMLs | Environment-only nominal/shift verification |
+| `pushcube_nominal.yaml` | Stage-2 ManiSkill single-CPU environment/replay smoke; no training |
+
+PushCube setup and server-only validation commands are in
+[the ManiSkill connection guide](../docs/maniskill.md). Backend omission keeps
+the existing HalfCheetah path. PushCube uses `backend: maniskill` and rejects
+actuator dynamics settings.
 
 ## Current MBPO workflow
 

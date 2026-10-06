@@ -16,6 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+maniskill = ["mani-skill==3.0.1"]
 test = ["pytest==9.1.1"]
 tracking = ["wandb>=0.19,<1", "imageio[ffmpeg]>=2.34,<3", "moviepy>=2,<3"]
 analysis = ["matplotlib>=3.9,<4"]

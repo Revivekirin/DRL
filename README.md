@@ -10,12 +10,19 @@ MBPO replay retention has been corrected; the next run is a fresh seed-0 20k
 diagnostic. See [MBPO workflow](docs/mbpo.md) and [config guide](configs/README.md).
 Historical validation results below describe their original milestones.
 
+Stage 2 adds an optional ManiSkill 3.0.1 **PushCube-v1 single-CPU environment
+connection**. It is not wired into the SAC/MBPO training runners. See
+[setup, environment-only smoke, and HalfCheetah regression commands](docs/maniskill.md).
+Server runtime verification is pending; code availability is not a learning or
+runtime success claim. All runtime checks for this work are executed by the user
+on the server; Codex performs edits and static checks only.
+
 ## Test execution
 
 Tests that fit models or update learners require explicit remote opt-in:
 
 ```bash
-# Local: inference, configuration and lightweight environment checks
+# User's server: non-training checks (stage 2 uses the narrower guide allowlist)
 python -m pytest -q -m "not training"
 # Remote only: includes training tests
 python -m pytest -q --run-training
@@ -152,7 +159,7 @@ finally:
     env.close()
 ```
 
-`make_env` returns a `DynamicsController` Gymnasium wrapper. Construction does
+For HalfCheetah, `make_env` returns a `DynamicsController` Gymnasium wrapper. Construction does
 not reset the episode. Ordinary `env.reset()` keeps the chosen dynamics;
 `reset_to_nominal()` restores the nominal gear without resetting physical state.
 The controller must wrap a fresh, unmodified stock HalfCheetah. Nested controllers
@@ -252,8 +259,9 @@ Suggested logical commit: `Initialize dynamics-shift MuJoCo benchmark`.
 input is a `TransitionBatch` with `obs`, `action`, `reward`, `next_obs`,
 `terminated`, and `truncated`. It does not sample replay or access environments.
 Matrices have shape [batch, feature]; rewards and flags have shape [batch, 1].
-The runner and replay buffer are separate. There is no synthetic replay or
-learned dynamics implementation.
+The runner and replay buffer are separate. MBPO additionally uses separate real
+and synthetic replay with a learned probabilistic ensemble. Stage-2 PushCube
+uses only the environment factory and replay contract, without either runner.
 
 Implementation details:
 
@@ -372,10 +380,10 @@ optional; ordinary loading preserves the caller's PyTorch RNG. Tests verify
 identical deterministic actions and identical subsequent updates given the same
 batch and random draws.
 
-**Replay and simulator state are not persisted. Exact training resume is not
-supported.** Checkpoints support evaluation and learner-state restoration, not
-continuation of the original environment/replay trajectory. The private replay
-RNG and environment/space RNGs are consequently not part of this checkpoint.
+Current HalfCheetah runners persist replay, simulator and RNG continuation state.
+Older checkpoints may lack that state and cannot resume those runners.
+This continuation implementation is MuJoCo-specific; stage-2 PushCube adds no
+checkpoint or training-resume support.
 
 ### SAC tests
 
@@ -384,7 +392,7 @@ parameter changes, exact Polyak arithmetic, terminal target masking, continued
 bootstrapping at truncation, action bounds, log-density correction including
 saturated tails, checkpoint optimizer/RNG restoration, repeatable deterministic
 evaluation, unchanged learner/optimizer states during evaluation, and CPU smoke
-training with unique output directories. Local checks use
+training with unique output directories. Non-training checks on the user's server use
 `python -m pytest -q -m "not training"`; training checks require the remote
 command `python -m pytest -q --run-training`.
 
