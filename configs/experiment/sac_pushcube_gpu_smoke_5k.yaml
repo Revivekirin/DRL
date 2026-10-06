@@ -1,4 +1,4 @@
-name: sac_pushcube_nominal_100k
+name: sac_pushcube_gpu_smoke_5k
 
 seed: 0
 
@@ -7,10 +7,10 @@ env:
   id: PushCube-v1
   obs_mode: state
   robot_uids: panda
-  control_mode: pd_joint_delta_pos
+  control_mode: pd_ee_delta_pos
   reward_mode: normalized_dense
-  sim_backend: cpu
-  num_envs: 1
+  sim_backend: gpu
+  num_envs: 32
 
 algo:
   hidden_dims: [256, 256]
@@ -24,19 +24,19 @@ algo:
 
 training:
   device: cuda:0
-  real_env_steps: 100000
+  real_env_steps: 5120
   batch_size: 256
-  replay_capacity: 200000
-  learning_starts: 500
-  updates_per_env_step: 1
-  log_every: 100
+  replay_capacity: 500000
+  learning_starts: 1024
+  utd: 0.5
+  log_every: 1024
   torch_threads: 1
-  checkpoint_every: 10000
+  checkpoint_every: 2560
 
 evaluation:
-  episodes: 10
+  episodes: 5
   seed: 0
-  interval: 10000
+  interval: 2560
   termination_policy: terminate_on_success
 
 tracking:
