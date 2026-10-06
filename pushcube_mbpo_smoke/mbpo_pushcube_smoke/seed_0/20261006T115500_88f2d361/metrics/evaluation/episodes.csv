@@ -1,4 +1,0 @@
-episode,seed,per_episode_return,episode_length,success_once,success_at_end,terminated,truncated,successful_termination
-1,20000,3.534569129347801,50,False,False,False,True,False
-2,20000,2.9570960700511932,50,False,False,False,True,False
-3,20000,3.007036954164505,50,False,False,False,True,False
