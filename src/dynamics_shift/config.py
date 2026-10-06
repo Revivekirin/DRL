@@ -18,6 +18,8 @@ def validate_scale(value: float) -> float:
 class EnvConfig:
     id: str = "HalfCheetah-v5"
     backend: str = "mujoco"
+
+    # ManiSkill-only options
     obs_mode: str | None = None
     robot_uids: str | None = None
     control_mode: str | None = None
@@ -26,21 +28,96 @@ class EnvConfig:
     num_envs: int | None = None
 
     def __post_init__(self) -> None:
-        options = ("obs_mode", "robot_uids", "control_mode", "reward_mode", "sim_backend", "num_envs")
+        maniskill_options = (
+            "obs_mode",
+            "robot_uids",
+            "control_mode",
+            "reward_mode",
+            "sim_backend",
+            "num_envs",
+        )
+
         if self.backend == "mujoco":
             if self.id != "HalfCheetah-v5":
-                raise ValueError("MuJoCo backend only supports HalfCheetah-v5")
-            if any(getattr(self, key) is not None for key in options):
-                raise ValueError("ManiSkill options are not supported by the MuJoCo backend")
-        elif self.backend == "maniskill":
-            expected = dict(id="PushCube-v1", obs_mode="state", robot_uids="panda",
-                            control_mode="pd_joint_delta_pos", reward_mode="normalized_dense",
-                            sim_backend="cpu", num_envs=1)
-            for key, value in expected.items():
-                if getattr(self, key) != value or (key == "num_envs" and type(self.num_envs) is not int):
-                    raise ValueError(f"Stage-2 ManiSkill requires env.{key}={value!r}")
-        else:
-            raise ValueError(f"Unsupported environment backend: {self.backend}")
+                raise ValueError(
+                    "MuJoCo backend only supports HalfCheetah-v5"
+                )
+
+            if any(
+                getattr(self, key) is not None
+                for key in maniskill_options
+            ):
+                raise ValueError(
+                    "ManiSkill options are not supported "
+                    "by the MuJoCo backend"
+                )
+
+            return
+
+        if self.backend == "maniskill":
+            if self.id != "PushCube-v1":
+                raise ValueError(
+                    "Current ManiSkill integration only supports "
+                    "PushCube-v1"
+                )
+
+            if self.obs_mode != "state":
+                raise ValueError(
+                    "PushCube SAC currently requires env.obs_mode='state'"
+                )
+
+            if self.robot_uids != "panda":
+                raise ValueError(
+                    "PushCube SAC currently requires env.robot_uids='panda'"
+                )
+
+            allowed_control_modes = {
+                "pd_joint_delta_pos",
+                "pd_ee_delta_pos",
+            }
+
+            if self.control_mode not in allowed_control_modes:
+                raise ValueError(
+                    "Unsupported ManiSkill control mode. "
+                    f"Expected one of {sorted(allowed_control_modes)}, "
+                    f"got {self.control_mode!r}"
+                )
+
+            if self.reward_mode != "normalized_dense":
+                raise ValueError(
+                    "PushCube SAC currently requires "
+                    "env.reward_mode='normalized_dense'"
+                )
+
+            allowed_sim_backends = {
+                "cpu",
+                "gpu",
+            }
+
+            if self.sim_backend not in allowed_sim_backends:
+                raise ValueError(
+                    "Unsupported ManiSkill simulation backend. "
+                    f"Expected one of {sorted(allowed_sim_backends)}, "
+                    f"got {self.sim_backend!r}"
+                )
+
+            if type(self.num_envs) is not int or self.num_envs < 1:
+                raise ValueError(
+                    "env.num_envs must be a positive integer"
+                )
+
+            # Keep the old CPU smoke path deliberately single-env.
+            if self.sim_backend == "cpu" and self.num_envs != 1:
+                raise ValueError(
+                    "The current CPU ManiSkill path supports num_envs=1 only. "
+                    "Use sim_backend='gpu' for vectorized environments."
+                )
+
+            return
+
+        raise ValueError(
+            f"Unsupported environment backend: {self.backend}"
+        )
 
 
 @dataclass(frozen=True)
@@ -59,34 +136,99 @@ class ExperimentConfig:
 
     def __post_init__(self) -> None:
         if type(self.seed) is not int or self.seed < 0:
-            raise ValueError("seed must be a nonnegative integer")
+            raise ValueError(
+                "seed must be a nonnegative integer"
+            )
+
         if self.env.backend == "mujoco":
             if self.dynamics is None:
-                object.__setattr__(self, "dynamics", DynamicsConfig())
-            elif not isinstance(self.dynamics, DynamicsConfig):
-                raise ValueError("MuJoCo dynamics must be DynamicsConfig")
+                object.__setattr__(
+                    self,
+                    "dynamics",
+                    DynamicsConfig(),
+                )
+            elif not isinstance(
+                self.dynamics,
+                DynamicsConfig,
+            ):
+                raise ValueError(
+                    "MuJoCo dynamics must be DynamicsConfig"
+                )
+
         else:
             if self.dynamics is not None:
-                raise ValueError("ManiSkill does not support actuator dynamics settings; omit dynamics")
-            if self.seed != 0:
-                raise ValueError("Stage-2 ManiSkill smoke uses seed 0 only")
+                raise ValueError(
+                    "ManiSkill does not support actuator dynamics "
+                    "settings; omit dynamics"
+                )
 
 
-def _mapping(value: object, allowed: set[str]) -> dict:
-    if not isinstance(value, Mapping) or set(value) - allowed:
-        raise ValueError(f"Expected a mapping with only these keys: {sorted(allowed)}")
+def _mapping(
+    value: object,
+    allowed: set[str],
+) -> dict:
+    if (
+        not isinstance(value, Mapping)
+        or set(value) - allowed
+    ):
+        raise ValueError(
+            "Expected a mapping with only these keys: "
+            f"{sorted(allowed)}"
+        )
+
     return dict(value)
 
 
-def load_config(path: str | Path) -> ExperimentConfig:
+def load_config(
+    path: str | Path,
+) -> ExperimentConfig:
     with Path(path).open() as stream:
-        raw = _mapping(yaml.safe_load(stream), {"env", "dynamics", "seed"})
-    env = EnvConfig(**_mapping(raw.get("env", {}), set(EnvConfig.__dataclass_fields__)))
-    if env.backend == "maniskill" and raw.get("dynamics") is not None:
-        raise ValueError("ManiSkill does not support actuator dynamics settings; omit dynamics")
+        raw = _mapping(
+            yaml.safe_load(stream),
+            {
+                "env",
+                "dynamics",
+                "seed",
+            },
+        )
+
+    env = EnvConfig(
+        **_mapping(
+            raw.get("env", {}),
+            set(
+                EnvConfig.__dataclass_fields__
+            ),
+        )
+    )
+
+    if (
+        env.backend == "maniskill"
+        and raw.get("dynamics") is not None
+    ):
+        raise ValueError(
+            "ManiSkill does not support actuator dynamics "
+            "settings; omit dynamics"
+        )
+
     return ExperimentConfig(
         env=env,
-        dynamics=(None if env.backend == "maniskill" else
-                  DynamicsConfig(**_mapping(raw.get("dynamics", {}), {"actuator_scale"}))),
-        seed=raw.get("seed", 0),
+        dynamics=(
+            None
+            if env.backend == "maniskill"
+            else DynamicsConfig(
+                **_mapping(
+                    raw.get(
+                        "dynamics",
+                        {},
+                    ),
+                    {
+                        "actuator_scale",
+                    },
+                )
+            )
+        ),
+        seed=raw.get(
+            "seed",
+            0,
+        ),
     )
