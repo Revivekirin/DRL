@@ -88,3 +88,38 @@ def test_vector_final_observation_and_individual_flags():
     np.testing.assert_array_equal(replay._arrays['next_obs'][:2], terminal.numpy())
     np.testing.assert_array_equal(replay._arrays['truncated'][:2, 0], [True, False])
     assert not replay._arrays['terminated'][:2].any()
+
+
+def test_partition_and_block_errors_do_not_mix_train_and_holdout():
+    # Each output-array entry identifies a model member, not a coordinate.
+    dataset = ModelDataset(np.array([[1.], [2.], [3.]]), np.zeros((3, 3)),
+                           np.array([0, 1]), np.array([2]))
+    def predict(inputs):
+        first = np.repeat(inputs, 3, axis=1)
+        return np.stack([first, first * 2]), None
+    model = SimpleNamespace(obs_dim=2, predict=predict)
+    result = model_errors(model, dataset, {'agent.qpos': [0, 1], 'agent.qvel': [1, 2]})
+    np.testing.assert_allclose(result['prediction_errors']['train']['state_prediction_rmse'],
+                               [np.sqrt(2.5), 2 * np.sqrt(2.5)])
+    assert result['state_prediction_rmse'] == [3., 6.]
+    assert result['reward_prediction_rmse'] == [3., 6.]
+    assert result['prediction_errors']['holdout']['state_blocks']['agent.qvel']['member_rmse'] == [3., 6.]
+    assert result['prediction_errors']['holdout']['state_blocks']['agent.qvel']['zero_delta_baseline_rmse'] == 0
+
+
+def test_sampled_reward_diagnostics_are_separate_from_mean_predictions():
+    layout = {'extra.tcp_pose': [0, 7], 'extra.obj_pose': [7, 14], 'extra.goal_pos': [14, 17]}
+    obs = np.zeros((2, 17))
+    obs[:, [3, 10]] = 1
+    diag = StateDiagnostics(layout)
+    means = np.zeros((1, 2, 18))
+    means[:, :, -1] = .5
+    diag.observe(obs, obs.copy(), np.array([-.2, 1.3]), means, [0])
+    record = diag.records[0]
+    assert record['reward_below_zero_fraction'] == .5
+    assert record['reward_above_one_fraction'] == .5
+    assert record['reward_min'] == -.2 and record['reward_max'] == 1.3
+    assert record['elite_mean_reward_outside_0_1_fraction'] == 0
+    assert record['all_finite']
+    with pytest.raises(FloatingPointError):
+        diag.observe(obs, obs, np.array([np.nan, 0.]))

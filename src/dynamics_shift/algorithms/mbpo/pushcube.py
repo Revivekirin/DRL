@@ -75,7 +75,19 @@ class StateDiagnostics:
     def observe(self, obs, next_obs, rewards, means=None, elites=None):
         if not all(np.isfinite(x).all() for x in (obs, next_obs, rewards)):
             raise FloatingPointError('Nonfinite model/real diagnostic data')
-        record = {'count': len(next_obs), 'reward_outside_0_1_fraction': float(np.mean((rewards < 0) | (rewards > 1)))}
+        record = {'count': len(next_obs), 'all_finite': True,
+                  'reward_outside_0_1_fraction': float(np.mean((rewards < 0) | (rewards > 1))),
+                  'reward_below_zero_fraction': float(np.mean(rewards < 0)),
+                  'reward_above_one_fraction': float(np.mean(rewards > 1)),
+                  'reward_min': float(np.min(rewards)), 'reward_max': float(np.max(rewards))}
+        if means is not None and elites is not None:
+            elite_rewards = means[elites, :, -1]
+            if not np.isfinite(elite_rewards).all():
+                raise FloatingPointError('Nonfinite elite mean rewards')
+            record['elite_mean_reward_min'] = float(elite_rewards.min())
+            record['elite_mean_reward_max'] = float(elite_rewards.max())
+            record['elite_mean_reward_outside_0_1_fraction'] = float(np.mean(
+                (elite_rewards < 0) | (elite_rewards > 1)))
         for key in ('extra.tcp_pose', 'extra.obj_pose'):
             start, stop = self.layout[key]
             deviation = np.abs(np.linalg.norm(next_obs[:, start + 3:stop], axis=1) - 1)
@@ -87,15 +99,44 @@ class StateDiagnostics:
         self.records.append(record)
 
 
-def model_errors(model, dataset):
-    """Separate state-delta and reward holdout RMSE in original units, per member."""
-    ids = dataset.holdout_indices
-    means, _ = model.predict(dataset.inputs[ids])
-    errors = means - dataset.targets[ids][None]
-    if not np.isfinite(errors).all():
-        raise FloatingPointError('Nonfinite model validation predictions')
-    return {'state_prediction_rmse': np.sqrt(np.mean(errors[:, :, :model.obs_dim] ** 2, axis=(1, 2))).tolist(),
-            'reward_prediction_rmse': np.sqrt(np.mean(errors[:, :, -1] ** 2, axis=1)).tolist()}
+def model_errors(model, dataset, layout=None):
+    """Member-order mean-prediction RMSE, separate train and current holdout.
+
+    Legacy top-level keys remain holdout-only. These calculations never sample
+    stochastic predictions, change normalizers, or consume replay/runner RNG.
+    """
+    partitions = {}
+    blocks = dict(layout or {})
+    for key in ('extra.tcp_pose', 'extra.obj_pose'):
+        if key in blocks:
+            start, stop = blocks[key]
+            blocks[key + '.position'] = [start, start + 3]
+            blocks[key + '.quaternion_components'] = [start + 3, stop]
+    for name, ids in (('train', dataset.train_indices), ('holdout', dataset.holdout_indices)):
+        means, _ = model.predict(dataset.inputs[ids])
+        targets = dataset.targets[ids]
+        errors = means - targets[None]
+        if not np.isfinite(errors).all():
+            raise FloatingPointError('Nonfinite model validation predictions')
+        partitions[name] = {
+            'samples': len(ids),
+            'state_prediction_rmse': np.sqrt(np.mean(errors[:, :, :model.obs_dim] ** 2, axis=(1, 2))).tolist(),
+            'reward_prediction_rmse': np.sqrt(np.mean(errors[:, :, -1] ** 2, axis=1)).tolist(),
+            'state_blocks': {},
+        }
+        for key, (start, stop) in blocks.items():
+            partitions[name]['state_blocks'][key] = {
+                'member_rmse': np.sqrt(np.mean(errors[:, :, start:stop] ** 2, axis=(1, 2))).tolist(),
+                'zero_delta_baseline_rmse': float(np.sqrt(np.mean(targets[:, start:stop] ** 2))),
+            }
+    return {**{key: partitions['holdout'][key] for key in ('state_prediction_rmse', 'reward_prediction_rmse')},
+            'prediction_errors': partitions,
+            'error_semantics': {'array_axis': 'ensemble member index, not elite rank or state coordinate',
+                'prediction': 'conditional mean in original coordinates; no Gaussian sampling',
+                'state_target': 'next observation minus current observation',
+                'holdout': 'current refit real snapshot partition; may have appeared in earlier training',
+                'train': 'current real training partition after fitting; not bootstrap duplicates',
+                'zero_delta_baseline': 'predict unchanged observation; diagnostic only'}}
 
 
 def generate_pushcube_rollouts(learner, model, real, synthetic, settings, rng, diagnostics, contract):

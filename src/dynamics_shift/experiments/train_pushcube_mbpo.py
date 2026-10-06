@@ -141,7 +141,7 @@ def train_pushcube_mbpo(config, settings, output_root='outputs'):
                 if current >= next_refit and len(real) >= 3:
                     dataset = ModelDataset.from_real_replay(real, rng, settings.holdout_ratio, settings.model_max_samples)
                     fitted = model.train(dataset)
-                    errors = model_errors(model, dataset)
+                    errors = model_errors(model, dataset, layout)
                     synthetic.clear()
                     diagnostics = StateDiagnostics(layout)
                     generated = generate_pushcube_rollouts(learner, model, real, synthetic, settings, rng, diagnostics, contract)
