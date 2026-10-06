@@ -39,6 +39,8 @@ def make_maniskill_env(
         raise ImportError(
             "ManiSkill optional dependencies are missing or incompatible. "
             "Expected both CPUGymWrapper and ManiSkillVectorEnv to be available. "
+            "Install the optional extra from the repository root with: "
+            "pip install -e '.[maniskill]'. "
             f"Original import error: {error}"
         ) from error
 

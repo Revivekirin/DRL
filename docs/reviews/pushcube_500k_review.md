@@ -119,3 +119,43 @@ Send the checkpoint inventory, pytest summary, both summary.json and episodes.cs
 and complete traceback if any command fails. Verify summary counters show
 500000 for final and 100000 for the historical peak checkpoint. Preserve and
 compare checkpoint_sha256 values. Do not proceed to additional training.
+
+## Supplied server reevaluation results
+
+User-provided output confirms both checkpoint files were loaded and evaluated
+in `outputs/pushcube_reeval_100.2RM5Z1`, with explicit reset seeds 0..99:
+
+| Checkpoint | Real transitions | Updates | Success once / at end | Mean return | Mean length |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| step_100000.pt | 100000 | 48016 | 96/100 | 2.2073914 | 8.18 |
+| final.pt | 500000 | 248016 | 52/100 | 3.8610464 | 28.46 |
+
+Both report learner probe passed, full learner state unchanged, zero evaluation
+updates and actual successful terminations (96 and 52 respectively). Observation
+shape is (35,), action shape (4,) for pd_ee_delta_pos; the earlier joint-control
+smoke used action shape (8,), so these are distinct control contracts.
+
+Hashes reported by the evaluator:
+- final.pt: a67557a8c52fd751afbc1f8b93013589ccab0f26957e25355fe8731ccd9ab190
+- step_100000.pt: 9048950a50e2d95e8a7df09af55b4199cf08eef11e843c9e614a6d97451851fd
+
+The final policy is worse by 44 percentage points on this shared evaluation
+set. Its larger cumulative return does not indicate better task success under
+early stopping: it also runs for more steps. This does not identify the cause
+of degradation, establish multi-training-seed reproducibility, or prove that
+100k is the best of all saved checkpoints. The original 20-episode reset stream
+and this explicit 100-seed protocol must remain separately reported.
+
+Legacy training termination metadata remains unverified and unchanged. The
+summary's operational_differences compares recorded metadata, not reconstructed
+historical behavior. Training actually suppressed successful termination as
+noted above. Per-episode CSVs were not supplied yet; paired episode-level analysis
+remains pending. No new evaluation is needed for the subsequent test fixes.
+
+The same server output reports 63 passed, 3 failed, 3 deselected regression tests.
+Two failures were stale CPU-only/seed-zero-only configuration expectations;
+these now check supported GPU configurations and valid/invalid evaluation seeds.
+The third was a missing optional-dependency installation hint, now restored.
+These fixes do not change policy weights, dynamics, evaluation, or update timing.
+Rerun the previously listed non-training regression command after syncing them;
+the previous result is not an all-pass result.

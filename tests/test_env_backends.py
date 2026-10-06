@@ -46,12 +46,29 @@ def test_pushcube_rejects_programmatic_actuator_settings_and_rendering():
         replace(config, dynamics=DynamicsConfig())
     with pytest.raises(ValueError, match="headless"):
         make_env(config, render_mode="rgb_array")
-    with pytest.raises(ValueError, match="seed 0"):
-        replace(config, seed=1)
+
+
+@pytest.mark.parametrize("seed", [0, 1, 99])
+def test_pushcube_accepts_nonnegative_evaluation_seeds(seed):
+    # Training remains seed 0; evaluation may reset with explicit episode seeds.
+    assert replace(pushcube_config(), seed=seed).seed == seed
+
+
+@pytest.mark.parametrize("seed", [-1, True, 1.0])
+def test_pushcube_rejects_invalid_seeds(seed):
+    with pytest.raises(ValueError, match="nonnegative integer"):
+        replace(pushcube_config(), seed=seed)
+
+
+@pytest.mark.parametrize("num_envs", [1, 32])
+def test_pushcube_accepts_gpu_configuration(num_envs):
+    # Configuration only: does not construct or step a GPU environment.
+    env = replace(pushcube_config().env, sim_backend="gpu", num_envs=num_envs)
+    assert env.sim_backend == "gpu" and env.num_envs == num_envs
 
 
 @pytest.mark.parametrize("changes", [dict(num_envs=True), dict(num_envs=2), dict(num_envs=1.0),
-                                     dict(sim_backend="gpu"), dict(obs_mode="rgb"),
+                                     dict(sim_backend="unsupported"), dict(obs_mode="rgb"),
                                      dict(robot_uids="fetch"), dict(id="PickCube-v1"),
                                      dict(control_mode="*"), dict(reward_mode="dense"),
                                      dict(backend="unknown")])
