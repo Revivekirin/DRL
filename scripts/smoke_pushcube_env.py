@@ -73,7 +73,15 @@ def run(config_path, episodes):
         require(len(obs_space.shape) == len(action_space.shape) == 1, "Spaces must be unbatched")
         require(np.isfinite(action_space.low).all() and np.isfinite(action_space.high).all()
                 and (action_space.high > action_space.low).all(), "Invalid action bounds")
-        horizon = env.spec.max_episode_steps
+        # ManiSkill's TimeLimit can carry the horizon even when Gymnasium's
+        # EnvSpec has max_episode_steps=None. Use the versioned official helper
+        # to inspect the actual wrapper configuration, not a hardcoded fallback.
+        from mani_skill.utils.gym_utils import find_max_episode_steps_value
+
+        horizon = find_max_episode_steps_value(env)
+        emit("horizon", spec_max_episode_steps=(env.spec.max_episode_steps if env.spec else None),
+             resolved_max_episode_steps=horizon,
+             resolver="mani_skill.utils.gym_utils.find_max_episode_steps_value")
         require(horizon == 50, f"PushCube-v1 3.0.1 horizon changed: {horizon}")
         replay = ReplayBuffer(1, obs_space.shape[0], action_space.shape[0], seed=0)
         obs, reset_info = env.reset(seed=0)

@@ -53,6 +53,7 @@ Versioned sources used for implementation:
 
 - [ManiSkill 3.0.1 dependencies](https://github.com/mani-skill/ManiSkill/blob/v3.0.1/setup.py)
 - [CPUGymWrapper](https://github.com/mani-skill/ManiSkill/blob/v3.0.1/mani_skill/utils/wrappers/gymnasium.py)
+- [Official horizon lookup](https://github.com/mani-skill/ManiSkill/blob/v3.0.1/mani_skill/utils/gym_utils.py)
 - [CPU backend alias and renderer disabling](https://github.com/mani-skill/ManiSkill/blob/v3.0.1/mani_skill/envs/utils/system/backend.py)
 - [PushCube registration and 50-step horizon](https://github.com/mani-skill/ManiSkill/blob/v3.0.1/mani_skill/envs/tasks/tabletop/push_cube.py)
 - [mplib 0.1.1 metadata](https://pypi.org/pypi/mplib/0.1.1/json)
@@ -119,7 +120,7 @@ installation/import/ABI error is a failure; retain the complete traceback.
 python -u scripts/smoke_pushcube_env.py --config configs/pushcube_nominal.yaml --episodes 3
 ```
 
-Expected: exit code 0 and JSON events `preflight`, `contract`, `step_contract`,
+Expected: exit code 0 and JSON events `preflight`, `horizon`, `contract`, `step_contract`,
 three `episode` records, `close` with `ok: true`, and `summary` with `status: PASS`.
 The command checks every transition's array shapes/dtypes, finite values, action
 bounds, scalar reward, boolean flags, success termination, elapsed steps,
@@ -129,6 +130,13 @@ final next observation/flags before and after manual reset. SHA256 identifies
 the observed final next observation without dumping its full vector.
 
 At least one episode must reach truncation at the registered horizon of 50.
+The `horizon` event reports both `spec_max_episode_steps` (which may legitimately
+be null) and `resolved_max_episode_steps` (must be 50). ManiSkill's official
+`find_max_episode_steps_value` inspects wrapper attributes as well as EnvSpec.
+The initial server attempt constructed/closed the environment but failed before
+the smoke's explicit reset because it incorrectly required the horizon on EnvSpec.
+That lookup has been corrected; the real 50-step truncation check is unchanged.
+There is no fallback that substitutes 50 when the lookup fails.
 Early success termination may shorten other episodes. An unexpected horizon,
 automatic reset, data-contract mismatch or replay corruption raises an exception
 and emits `failure` where possible. Missing imports before entry into `main`
