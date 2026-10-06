@@ -3,8 +3,6 @@
 Supports:
 - CPU single-environment smoke/evaluation path via CPUGymWrapper.
 - GPU vectorized training path via ManiSkillVectorEnv.
-
-No dynamics shifts are applied here.
 """
 
 from __future__ import annotations
@@ -32,19 +30,15 @@ def make_maniskill_env(
 
     try:
         import gymnasium as gym
-        import mani_skill.envs  # Registers PushCube-v1 with Gymnasium.
+        import mani_skill.envs
 
-        from mani_skill.utils.wrappers.gymnasium import (
-            CPUGymWrapper,
-            ManiSkillVectorEnv,
-        )
+        from mani_skill.utils.wrappers.gymnasium import CPUGymWrapper
+        from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 
     except ImportError as error:
         raise ImportError(
-            "ManiSkill optional dependencies are missing or could not be imported. "
-            "On the server, install the appropriate PyTorch build, then run "
-            "python -m pip install -e '.[maniskill]' from the repository root. "
-            "See docs/maniskill.md for compatibility checks. "
+            "ManiSkill optional dependencies are missing or incompatible. "
+            "Expected both CPUGymWrapper and ManiSkillVectorEnv to be available. "
             f"Original import error: {error}"
         ) from error
 
@@ -66,13 +60,6 @@ def make_maniskill_env(
         # ---------------------------------------------------------------
         # CPU single-env path
         # ---------------------------------------------------------------
-        #
-        # Keep the already validated smoke/evaluation behavior:
-        # - removes ManiSkill's leading batch dimension,
-        # - converts tensors to NumPy,
-        # - preserves success termination,
-        # - does not automatically reset through this wrapper.
-        #
         if settings.sim_backend == "cpu":
             if settings.num_envs != 1:
                 raise ValueError(
@@ -93,15 +80,6 @@ def make_maniskill_env(
         # ---------------------------------------------------------------
         # GPU vectorized path
         # ---------------------------------------------------------------
-        #
-        # Keep tensors on device and preserve the vector dimension.
-        # train_pushcube_sac.py handles:
-        # - batched observations/actions,
-        # - replay insertion,
-        # - per-env episode statistics,
-        # - final observations after automatic reset,
-        # - UTD scheduling.
-        #
         if settings.sim_backend == "gpu":
             if settings.num_envs is None or settings.num_envs < 1:
                 raise ValueError(
@@ -110,19 +88,8 @@ def make_maniskill_env(
 
             env = ManiSkillVectorEnv(
                 env,
-                num_envs=settings.num_envs,
-
-                # Keep the same project semantics as the existing
-                # PushCube smoke path: successful task termination is real.
-                #
-                # This is intentionally False rather than matching some
-                # ManiSkill SAC examples that ignore task termination.
+                settings.num_envs,
                 ignore_terminations=False,
-
-                # Let the vector wrapper automatically reset finished envs.
-                # The trainer must use final_observation for replay targets.
-                auto_reset=True,
-
                 record_metrics=True,
             )
 
