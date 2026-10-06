@@ -205,51 +205,107 @@ def _extract_vector_success(
     terminated,
     num_envs: int,
 ) -> np.ndarray:
-    """Extract current-step success flags."""
-    success = info.get("success")
+    """Return success flags for the transition that just occurred.
 
-    if success is None:
-        # Some vector wrappers place terminal metrics in final_info.
+    ManiSkillVectorEnv may auto-reset completed environments. In that case,
+    terminal-step metrics must be recovered from ``final_info`` using the
+    ``_final_info`` mask rather than relying only on ``info["success"]``.
+    """
+
+    terminated_np = (
+        _to_numpy(terminated)
+        .astype(np.bool_, copy=False)
+        .reshape(-1)
+    )
+
+    if terminated_np.shape != (num_envs,):
+        raise ValueError(
+            "terminated has wrong vector shape: "
+            f"{terminated_np.shape}; expected ({num_envs},)"
+        )
+
+    # Current observations / non-final transitions.
+    current_success = info.get("success")
+
+    if current_success is None:
         success_np = np.zeros(
             num_envs,
             dtype=np.bool_,
         )
     else:
-        success_np = _to_numpy(success).astype(
-            np.bool_,
-            copy=False,
-        ).reshape(-1)
+        success_np = (
+            _to_numpy(current_success)
+            .astype(np.bool_, copy=False)
+            .reshape(-1)
+            .copy()
+        )
 
         if success_np.shape != (num_envs,):
             raise ValueError(
-                "PushCube vector success must have shape "
-                f"({num_envs},), got {success_np.shape}"
+                "PushCube success has wrong vector shape: "
+                f"{success_np.shape}; expected ({num_envs},)"
             )
 
-    terminated_np = _to_numpy(terminated).astype(
-        np.bool_,
-        copy=False,
-    ).reshape(-1)
+    # ManiSkillVectorEnv auto-reset path.
+    #
+    # For environments that terminated/truncated on this step,
+    # info["success"] can already correspond to the reset state.
+    # The transition that actually ended the episode is recorded
+    # in info["final_info"].
+    final_info = info.get("final_info")
+    final_mask = info.get("_final_info")
 
-    if terminated_np.shape != (num_envs,):
-        raise ValueError(
-            "terminated has wrong vector shape: "
-            f"{terminated_np.shape}"
+    if final_info is not None and final_mask is not None:
+        final_mask_np = (
+            _to_numpy(final_mask)
+            .astype(np.bool_, copy=False)
+            .reshape(-1)
         )
 
-    # Current project contract preserves success termination.
-    #
-    # If later matching ManiSkill's default SAC setting exactly
-    # (ignore_terminations=True), this check must be disabled and the
-    # termination policy changed explicitly in the config.
-    if success is not None:
-        mismatch = terminated_np != success_np
-
-        if mismatch.any():
+        if final_mask_np.shape != (num_envs,):
             raise ValueError(
-                "PushCube success termination contract violated "
-                f"for {int(mismatch.sum())} environments"
+                "_final_info has wrong vector shape: "
+                f"{final_mask_np.shape}; expected ({num_envs},)"
             )
+
+        final_success = final_info.get("success")
+
+        if final_success is not None:
+            final_success_np = (
+                _to_numpy(final_success)
+                .astype(np.bool_, copy=False)
+                .reshape(-1)
+            )
+
+            if final_success_np.shape != (num_envs,):
+                raise ValueError(
+                    "final_info['success'] has wrong vector shape: "
+                    f"{final_success_np.shape}; "
+                    f"expected ({num_envs},)"
+                )
+
+            success_np[final_mask_np] = (
+                final_success_np[final_mask_np]
+            )
+
+    # PushCube has success as its task termination condition.
+    #
+    # Validate only the implication needed by this project:
+    #
+    #     terminated -> success
+    #
+    # Do not require the raw current info["success"] tensor to be
+    # elementwise identical to terminated because vector auto-reset
+    # can replace current info with reset-state information.
+    invalid = terminated_np & (~success_np)
+
+    if invalid.any():
+        raise ValueError(
+            "PushCube reported terminated=True without terminal "
+            "success for "
+            f"{int(invalid.sum())} environment(s). "
+            "Inspect final_info/_final_info semantics."
+        )
 
     return success_np
 
