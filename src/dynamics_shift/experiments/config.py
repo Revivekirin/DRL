@@ -48,10 +48,13 @@ class EvaluationConfig:
 @dataclass(frozen=True)
 class PushCubeEvaluationConfig:
     episodes: int = 3
+    interval: int = 0
     seed: int = 0
     termination_policy: str = "terminate_on_success"
 
     def __post_init__(self):
+        if type(self.interval) is not int or self.interval < 0:
+            raise ValueError("evaluation.interval must be a nonnegative real-transition count")
         if type(self.episodes) is not int or self.episodes < 1:
             raise ValueError("evaluation.episodes must be positive")
         if type(self.seed) is not int or self.seed != 0:
@@ -98,8 +101,8 @@ class RunConfig:
         if self.env.backend == "maniskill":
             if not isinstance(self.evaluation, PushCubeEvaluationConfig):
                 raise ValueError("PushCube requires nominal PushCubeEvaluationConfig")
-            if self.training.device != "cpu" or self.tracking.mode != "disabled" or self.tracking.video_every:
-                raise ValueError("Stage-3 PushCube requires CPU learner and disabled tracking/video")
+            if self.tracking.mode != "disabled" or self.tracking.video_every:
+                raise ValueError("Single-CPU PushCube requires disabled tracking/video")
         elif self.dynamics.actuator_scale != 1.0:
             raise ValueError("Source SAC training requires nominal actuator_scale=1.0")
 
