@@ -13,7 +13,6 @@ Exact simulator/replay resume remains unsupported.
 from __future__ import annotations
 
 import csv
-from dataclasses import replace
 from datetime import datetime, timezone
 from importlib.metadata import version
 import json
@@ -34,9 +33,6 @@ from dynamics_shift.envs import make_env
 from dynamics_shift.evaluation.contracts import episode_horizon
 from dynamics_shift.utils.tracking import Tracker
 from dynamics_shift.utils.checkpoint import (
-    capture_rng,
-    load_checkpoint,
-    restore_rng,
     save_checkpoint,
 )
 from dynamics_shift.utils.device import check_device
@@ -468,10 +464,10 @@ def _training_contract(
         "num_envs": num_envs,
         "horizon": _horizon(env),
         "termination_policy":
-            config.evaluation.termination_policy,
+            "ignore_terminations" if config.env.sim_backend == "gpu" else "terminate_on_success",
         "truncation_policy":
             "bootstrap_from_final_observation",
-        "automatic_reset": num_envs > 1,
+        "automatic_reset": config.env.sim_backend == "gpu",
     }
 
 
@@ -487,227 +483,12 @@ def _evaluate_saved_checkpoint(
     *,
     device: torch.device,
 ) -> dict:
-    """Evaluate a saved learner using a separate single-CPU environment."""
-    output_dir.mkdir(
-        parents=True,
-        exist_ok=False,
-    )
-
-    learner, payload = load_checkpoint(
-        checkpoint,
-        device=device,
-    )
-
-    eval_env_config = replace(
-        config.env,
-        sim_backend="cpu",
-        num_envs=1,
-    )
-
-    eval_env = make_env(
-        ExperimentConfig(
-            eval_env_config,
-            None,
-            config.evaluation.seed,
-        )
-    )
-
-    try:
-        obs_space = _single_observation_space(
-            eval_env
-        )
-        action_space = _single_action_space(
-            eval_env
-        )
-
-        if learner.obs_dim != obs_space.shape[0]:
-            raise ValueError(
-                "Evaluation observation dimension "
-                "does not match checkpoint learner"
-            )
-
-        if not np.array_equal(
-            learner.action_low,
-            action_space.low,
-        ):
-            raise ValueError(
-                "Evaluation action lower bound mismatch"
-            )
-
-        if not np.array_equal(
-            learner.action_high,
-            action_space.high,
-        ):
-            raise ValueError(
-                "Evaluation action upper bound mismatch"
-            )
-
-        horizon = _horizon(eval_env)
-
-        rows = []
-
-        obs, _ = eval_env.reset(
-            seed=config.evaluation.seed
-        )
-
-        for episode_index in range(
-            config.evaluation.episodes
-        ):
-            episode_return = 0.0
-            episode_length = 0
-            success_once = False
-            success_at_end = False
-            terminated = False
-            truncated = False
-
-            while not (
-                terminated or truncated
-            ):
-                action = learner.act(
-                    obs,
-                    deterministic=True,
-                )
-
-                (
-                    next_obs,
-                    reward,
-                    terminated,
-                    truncated,
-                    info,
-                ) = eval_env.step(action)
-
-                success = bool(
-                    info.get("success", False)
-                )
-
-                episode_return += float(reward)
-                episode_length += 1
-                success_once |= success
-                success_at_end = success
-                obs = next_obs
-
-                if episode_length > horizon:
-                    raise RuntimeError(
-                        "Evaluation exceeded environment horizon"
-                    )
-
-            rows.append(
-                {
-                    "episode": episode_index + 1,
-                    "per_episode_return":
-                        episode_return,
-                    "episode_length":
-                        episode_length,
-                    "success_once":
-                        success_once,
-                    "success_at_end":
-                        success_at_end,
-                    "terminated":
-                        bool(terminated),
-                    "truncated":
-                        bool(truncated),
-                }
-            )
-
-            if (
-                episode_index + 1
-                < config.evaluation.episodes
-            ):
-                obs, _ = eval_env.reset()
-
-        mean_return = float(
-            np.mean(
-                [
-                    row["per_episode_return"]
-                    for row in rows
-                ]
-            )
-        )
-
-        mean_length = float(
-            np.mean(
-                [
-                    row["episode_length"]
-                    for row in rows
-                ]
-            )
-        )
-
-        success_once = float(
-            np.mean(
-                [
-                    row["success_once"]
-                    for row in rows
-                ]
-            )
-        )
-
-        success_at_end = float(
-            np.mean(
-                [
-                    row["success_at_end"]
-                    for row in rows
-                ]
-            )
-        )
-
-        success_termination_episodes = sum(
-            int(
-                row["terminated"]
-                and row["success_at_end"]
-            )
-            for row in rows
-        )
-
-        with (
-            output_dir / "episodes.csv"
-        ).open("x", newline="") as stream:
-            writer = csv.DictWriter(
-                stream,
-                fieldnames=list(rows[0]),
-            )
-            writer.writeheader()
-            writer.writerows(rows)
-
-        summary = {
-            "episodes":
-                config.evaluation.episodes,
-            "mean_return":
-                mean_return,
-            "mean_episode_length":
-                mean_length,
-            "success_once":
-                success_once,
-            "success_at_end":
-                success_at_end,
-            "success_termination_episodes":
-                success_termination_episodes,
-            "deterministic":
-                True,
-            "seed":
-                config.evaluation.seed,
-            "checkpoint":
-                str(checkpoint.resolve()),
-            "counters":
-                payload["counters"],
-            "device":
-                str(device),
-        }
-
-        (
-            output_dir / "summary.json"
-        ).write_text(
-            json.dumps(
-                summary,
-                indent=2,
-            )
-            + "\n"
-        )
-
-        return summary
-
-    finally:
-        eval_env.close()
+    """Use the same verified evaluator as the standalone CLI, isolating all RNG."""
+    from dynamics_shift.experiments.evaluate_sac_shift import evaluate_checkpoint
+    from dynamics_shift.utils.checkpoint import isolated_rng
+    with isolated_rng(device):
+        return evaluate_checkpoint(checkpoint, output_dir, device=device,
+                                   evaluation_overrides={"sim_backend": "cpu", "num_envs": 1})
 
 
 # ---------------------------------------------------------------------------
@@ -871,6 +652,9 @@ def train_pushcube_sac(
         metadata[
             "environment_contract"
         ] = contract
+        metadata["training_environment_contract"] = contract
+        metadata["evaluation_environment_contract"] = {**contract, "sim_backend": "cpu",
+            "num_envs": 1, "automatic_reset": False, "termination_policy": "terminate_on_success"}
 
         learner = SACLearner(
             obs_dim=contract[
@@ -978,6 +762,9 @@ def train_pushcube_sac(
                 counters,
                 config.to_dict(),
                 environment_contract=contract,
+                training_environment_contract=contract,
+                evaluation_environment_contract={**contract, "sim_backend": "cpu", "num_envs": 1,
+                    "automatic_reset": False, "termination_policy": "terminate_on_success"},
                 learner_probe=probe,
                 overwrite=overwrite,
             )
@@ -1558,8 +1345,9 @@ def train_pushcube_sac(
                 "verified"
                 if success_terminations
                 else (
-                    "UNVERIFIED: no successful "
-                    "training episode observed"
+                    "DISABLED: training suppresses termination; see success_once/success_at_end"
+                    if config.env.sim_backend == "gpu" else
+                    "UNVERIFIED: no successful termination observed"
                 )
             ),
         )

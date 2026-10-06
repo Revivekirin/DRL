@@ -35,7 +35,8 @@ class TrainingConfig:
     #   num_envs=32, utd=0.5 -> 16 updates per vector env step
     #
     # The trainer must implement this using an update-budget accumulator.
-    utd: float = 1.0
+    utd: float | None = None
+    updates_per_env_step: int | None = None
 
     log_every: int = 1000
     torch_threads: int = 1
@@ -72,6 +73,15 @@ class TrainingConfig:
                 raise ValueError(
                     f"Invalid integer setting: {name}"
                 )
+
+        legacy = self.updates_per_env_step
+        if legacy is not None and (type(legacy) is not int or legacy < 1):
+            raise ValueError("updates_per_env_step must be a positive integer")
+        if self.utd is not None and legacy is not None and self.utd != legacy:
+            raise ValueError("utd and updates_per_env_step must agree when both are supplied")
+        resolved = self.utd if self.utd is not None else (legacy if legacy is not None else 1.0)
+        object.__setattr__(self, "utd", resolved)
+        object.__setattr__(self, "updates_per_env_step", int(resolved) if isinstance(resolved, (int, float)) and float(resolved).is_integer() else None)
 
         if (
             isinstance(self.utd, bool)
@@ -184,7 +194,7 @@ class PushCubeEvaluationConfig:
             != "terminate_on_success"
         ):
             raise ValueError(
-                "PushCube training and evaluation "
+                "PushCube CPU evaluation must "
                 "preserve success termination"
             )
 
@@ -313,6 +323,8 @@ class RunConfig:
                 )
 
         else:
+            if self.training.updates_per_env_step is None:
+                raise ValueError("HalfCheetah requires an integer utd / updates_per_env_step")
             if (
                 self.dynamics is None
                 or self.dynamics.actuator_scale

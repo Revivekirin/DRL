@@ -12,7 +12,7 @@ from dynamics_shift.utils.checkpoint import load_checkpoint
 
 
 def evaluate_checkpoint(checkpoint: str | Path, output_dir: str | Path | None = None, *,
-                        device: str | torch.device = "cpu") -> dict:
+                        device: str | torch.device = "cpu", evaluation_overrides=None, episode_seeds=None) -> dict:
     checkpoint = Path(checkpoint)
     if output_dir is None:
         output_dir = checkpoint.parent.parent / "evaluations" / (
@@ -23,7 +23,10 @@ def evaluate_checkpoint(checkpoint: str | Path, output_dir: str | Path | None = 
     config = RunConfig.from_dict(payload["config"])
     if config.env.backend == "maniskill":
         from dynamics_shift.evaluation.pushcube import evaluate_loaded_checkpoint
-        return evaluate_loaded_checkpoint(learner, payload, config, checkpoint, output_dir)
+        return evaluate_loaded_checkpoint(learner, payload, config, checkpoint, output_dir,
+                                          evaluation_overrides=evaluation_overrides, episode_seeds=episode_seeds)
+    if evaluation_overrides or episode_seeds is not None:
+        raise ValueError("PushCube evaluation options cannot be used for HalfCheetah")
     previous_threads = torch.get_num_threads()
     try:
         torch.set_num_threads(config.training.torch_threads)

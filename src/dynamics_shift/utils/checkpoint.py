@@ -1,5 +1,6 @@
 """Atomic learner checkpoints with optional full training continuation state."""
 from pathlib import Path
+from contextlib import contextmanager
 import random
 import os
 import tempfile
@@ -27,7 +28,8 @@ def restore_rng(state: dict, device: torch.device) -> None:
 def save_checkpoint(path: str | Path, learner: SACLearner, counters: dict[str, int],
                     config: dict, *, training_state: dict | None = None,
                     overwrite: bool = False, environment_contract: dict | None = None,
-                    learner_probe: dict | None = None) -> None:
+                    learner_probe: dict | None = None, training_environment_contract: dict | None = None,
+                    evaluation_environment_contract: dict | None = None) -> None:
     if counters["policy_gradient_steps"] != learner.policy_gradient_steps:
         raise ValueError("Learner and experiment update counters disagree")
     path = Path(path)
@@ -39,6 +41,9 @@ def save_checkpoint(path: str | Path, learner: SACLearner, counters: dict[str, i
         payload["environment_contract"] = environment_contract
         payload["learner_probe"] = learner_probe
         payload["training_resume_supported"] = training_state is not None
+    if training_environment_contract is not None:
+        payload["training_environment_contract"] = training_environment_contract
+        payload["evaluation_environment_contract"] = evaluation_environment_contract
     # Complete a temporary file before publishing it; an interrupted write keeps latest intact.
     temporary = None
     try:
@@ -69,3 +74,17 @@ def load_checkpoint(path: str | Path, restore_random_state: bool = False, *,
     if restore_random_state:
         restore_rng(payload["rng"], learner.device)
     return learner, payload
+
+
+@contextmanager
+def isolated_rng(device):
+    """Preserve Python, NumPy and Torch CPU/all initialized CUDA generators."""
+    device = torch.device(device)
+    state = capture_rng(device)
+    cuda = torch.cuda.get_rng_state_all() if torch.cuda.is_initialized() else None
+    try:
+        yield
+    finally:
+        restore_rng(state, device)
+        if cuda is not None:
+            torch.cuda.set_rng_state_all(cuda)
