@@ -21,7 +21,6 @@ from dynamics_shift.envs import make_env
 from dynamics_shift.experiments.config import RunConfig
 from dynamics_shift.experiments.evaluate_sac_shift import evaluate_checkpoint
 from dynamics_shift.utils.checkpoint import save_checkpoint, load_checkpoint, restore_rng, capture_rng
-from dynamics_shift.utils.training_state import capture_training_state, restore_training_state
 from dynamics_shift.utils.tracking import Tracker
 from dynamics_shift.utils.device import check_device
 
@@ -36,6 +35,12 @@ def _git_metadata() -> dict:
 
 def train_source(config: RunConfig, output_root: str | Path = "outputs", *,
                  show_progress: bool = True, resume: str | Path | None = None) -> Path:
+    if config.env.backend == "maniskill":
+        from .train_pushcube_sac import train_pushcube_sac
+        return train_pushcube_sac(config, output_root, show_progress=show_progress, resume=resume)
+    from dynamics_shift.utils.training_state import capture_training_state, restore_training_state
+    from dynamics_shift.evaluation.contracts import halfcheetah_contract
+
     device = check_device(config.training.device)
     restored_learner, payload = (load_checkpoint(resume, device=device) if resume else (None, None))
     if payload is not None:
@@ -100,6 +105,7 @@ def train_source(config: RunConfig, output_root: str | Path = "outputs", *,
         restore_rng(payload["rng"] if payload is not None else rng_before_tracking, learner.device)
         def persist(path, overwrite=False):
             save_checkpoint(path, learner, counters, config.to_dict(), overwrite=overwrite,
+                            environment_contract=halfcheetah_contract(env),
                             training_state=capture_training_state(env, replay, obs, episode_return, episode_length))
         latest = run_dir / "checkpoints" / "latest.pt"
         persist(latest)

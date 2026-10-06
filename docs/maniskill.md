@@ -1,7 +1,8 @@
 # Stage 2: PushCube environment connection
 
-Code implementation is available. Server runtime validation is **pending** until
-the user runs the commands below and shares their output. This CPU smoke checks
+Stage-2 server validation was completed by the user: three seed-0 episodes,
+150 transitions, 50-step truncation, replay preservation, and 45 regression
+tests passed. Natural success termination remains unobserved. This CPU smoke checks
 environment interaction and replay contracts, not learning performance. It does
 not instantiate a learner, fit a model, load a checkpoint, train, or evaluate a
 policy. All runtime commands in this document are for the user's server only.

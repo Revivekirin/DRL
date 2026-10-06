@@ -1,4 +1,4 @@
-"""Run source SAC training and final frozen paired evaluation."""
+"""Run source SAC with backend-specific checkpointing and final evaluation."""
 import argparse
 from dataclasses import replace
 from dynamics_shift.utils.device import check_device

@@ -11,10 +11,11 @@ diagnostic. See [MBPO workflow](docs/mbpo.md) and [config guide](configs/README.
 Historical validation results below describe their original milestones.
 
 Stage 2 adds an optional ManiSkill 3.0.1 **PushCube-v1 single-CPU environment
-connection**. It is not wired into the SAC/MBPO training runners. See
+connection**. See
 [setup, environment-only smoke, and HalfCheetah regression commands](docs/maniskill.md).
-Server runtime verification is pending; code availability is not a learning or
-runtime success claim. All runtime checks for this work are executed by the user
+Stage 2 passed the user's server smoke and 45 regression tests. Stage 3 adds
+[single-CPU SAC, evaluation and learner checkpoints](docs/pushcube_sac.md), with
+server validation pending. MBPO is not connected to PushCube. All runtime checks for this work are executed by the user
 on the server; Codex performs edits and static checks only.
 
 ## Test execution

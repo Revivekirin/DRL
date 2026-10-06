@@ -46,6 +46,21 @@ class EvaluationConfig:
 
 
 @dataclass(frozen=True)
+class PushCubeEvaluationConfig:
+    episodes: int = 3
+    seed: int = 0
+    termination_policy: str = "terminate_on_success"
+
+    def __post_init__(self):
+        if type(self.episodes) is not int or self.episodes < 1:
+            raise ValueError("evaluation.episodes must be positive")
+        if type(self.seed) is not int or self.seed != 0:
+            raise ValueError("PushCube evaluation uses a seed-0 episode stream")
+        if self.termination_policy != "terminate_on_success":
+            raise ValueError("PushCube training and evaluation preserve success termination")
+
+
+@dataclass(frozen=True)
 class TrackingConfig:
     mode: str = "disabled"
     project: str = "dynamics-shift"
@@ -69,17 +84,23 @@ class RunConfig:
     name: str = "sac_halfcheetah_source"
     seed: int = 0
     env: EnvConfig = field(default_factory=EnvConfig)
-    dynamics: DynamicsConfig = field(default_factory=DynamicsConfig)
+    dynamics: DynamicsConfig | None = None
     algo: SACConfig = field(default_factory=SACConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
-    evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
+    evaluation: EvaluationConfig | PushCubeEvaluationConfig = field(default_factory=EvaluationConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
 
     def __post_init__(self) -> None:
         if not self.name or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in self.name):
             raise ValueError("name must contain only letters, digits, underscores or hyphens")
-        ExperimentConfig(self.env, self.dynamics, self.seed)
-        if self.dynamics.actuator_scale != 1.0:
+        resolved = ExperimentConfig(self.env, self.dynamics, self.seed)
+        object.__setattr__(self, "dynamics", resolved.dynamics)
+        if self.env.backend == "maniskill":
+            if not isinstance(self.evaluation, PushCubeEvaluationConfig):
+                raise ValueError("PushCube requires nominal PushCubeEvaluationConfig")
+            if self.training.device != "cpu" or self.tracking.mode != "disabled" or self.tracking.video_every:
+                raise ValueError("Stage-3 PushCube requires CPU learner and disabled tracking/video")
+        elif self.dynamics.actuator_scale != 1.0:
             raise ValueError("Source SAC training requires nominal actuator_scale=1.0")
 
     def to_dict(self) -> dict:
@@ -90,8 +111,17 @@ class RunConfig:
     def from_dict(cls, raw: dict) -> "RunConfig":
         raw = _mapping(raw, set(cls.__dataclass_fields__))
         values = dict(raw)
+        env_raw = _mapping(raw.get("env", {}), set(EnvConfig.__dataclass_fields__))
+        is_maniskill = env_raw.get("backend") == "maniskill"
         for name, kind in (("env", EnvConfig), ("dynamics", DynamicsConfig), ("algo", SACConfig),
                            ("training", TrainingConfig), ("evaluation", EvaluationConfig), ("tracking", TrackingConfig)):
+            if is_maniskill and name == "dynamics":
+                if raw.get(name) is not None:
+                    raise ValueError("ManiSkill does not support actuator dynamics settings; omit dynamics")
+                values[name] = None
+                continue
+            if is_maniskill and name == "evaluation":
+                kind = PushCubeEvaluationConfig
             values[name] = kind(**_mapping(raw.get(name, {}), set(kind.__dataclass_fields__)))
         return cls(**values)
 

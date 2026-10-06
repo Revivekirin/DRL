@@ -21,6 +21,9 @@ def evaluate_checkpoint(checkpoint: str | Path, output_dir: str | Path | None = 
     output_dir.mkdir(parents=True, exist_ok=False)
     learner, payload = load_checkpoint(checkpoint, device=device)
     config = RunConfig.from_dict(payload["config"])
+    if config.env.backend == "maniskill":
+        from dynamics_shift.evaluation.pushcube import evaluate_loaded_checkpoint
+        return evaluate_loaded_checkpoint(learner, payload, config, checkpoint, output_dir)
     previous_threads = torch.get_num_threads()
     try:
         torch.set_num_threads(config.training.torch_threads)

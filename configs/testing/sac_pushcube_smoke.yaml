@@ -1,0 +1,30 @@
+name: sac_pushcube_smoke
+seed: 0
+env:
+  backend: maniskill
+  id: PushCube-v1
+  obs_mode: state
+  robot_uids: panda
+  control_mode: pd_joint_delta_pos
+  reward_mode: normalized_dense
+  sim_backend: cpu
+  num_envs: 1
+algo:
+  hidden_dims: [32, 32]
+training:
+  device: cpu
+  real_env_steps: 160
+  batch_size: 16
+  replay_capacity: 512
+  learning_starts: 16
+  updates_per_env_step: 1
+  log_every: 16
+  torch_threads: 1
+  checkpoint_every: 80
+evaluation:
+  episodes: 3
+  seed: 0
+  termination_policy: terminate_on_success
+tracking:
+  mode: disabled
+  video_every: 0

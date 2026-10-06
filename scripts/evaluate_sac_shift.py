@@ -1,4 +1,4 @@
-"""Evaluate a checkpoint using its stored paired evaluation settings."""
+"""Load a learner and evaluate: paired HalfCheetah shift or nominal PushCube."""
 import argparse
 import json
 from dynamics_shift.utils.device import check_device
