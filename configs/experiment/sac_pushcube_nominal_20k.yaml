@@ -1,5 +1,7 @@
-name: sac_pushcube_nominal_5k
+name: sac_pushcube_nominal_20k
+
 seed: 0
+
 env:
   backend: maniskill
   id: PushCube-v1
@@ -9,6 +11,7 @@ env:
   reward_mode: normalized_dense
   sim_backend: cpu
   num_envs: 1
+
 algo:
   hidden_dims: [256, 256]
   actor_lr: 0.0003
@@ -18,21 +21,24 @@ algo:
   tau: 0.005
   initial_alpha: 0.2
   target_entropy: null
+
 training:
   device: cuda:0
-  real_env_steps: 5000
+  real_env_steps: 20000
   batch_size: 256
-  replay_capacity: 10000
+  replay_capacity: 50000
   learning_starts: 500
   updates_per_env_step: 1
   log_every: 100
   torch_threads: 1
-  checkpoint_every: 1000
+  checkpoint_every: 5000
+
 evaluation:
-  episodes: 3
+  episodes: 5
   seed: 0
-  interval: 1000
+  interval: 5000
   termination_policy: terminate_on_success
+
 tracking:
   mode: disabled
   video_every: 0
