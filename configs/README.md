@@ -1,16 +1,14 @@
 # Configuration inventory
 
-- `runs/`: current canonical-schema SAC/MBPO PushCube 500k, seed 0, fresh runs.
-- `testing/common_{sac,mbpo}.yaml`: GPU-vector PushCube 800-transition smoke.
-- `testing/common_{sac,mbpo}_mujoco.yaml`: unchanged scalar smoke algorithms.
-- Other `testing/` presets: retained for regression tests and historical smoke
-  contracts (CPU SAC, original MBPO, video). They are not redundant with GPU smoke.
-- `archive/`: moved experiment protocols; no hyperparameter changes.
-- `algo/`: referenced legacy SAC/MBPO component settings; retain relative includes.
-- `diagnostics/`: fixed-real-data model fitting, not policy training.
-- Root YAMLs: factory/actuator contracts used by tests and diagnostic scripts.
+- `runs/`: current seed-0 SAC/MBPO full-run configurations.
+- `archive/`: retained historical protocols still referenced by regression or
+  severity-sweep analysis. Obsolete PushCube pilot launch configs were removed.
+- `diagnostics/`: fixed-real-data fitting, not policy training.
+- `algo/`: referenced algorithm includes.
+- Root YAMLs: environment factory/actuator contracts.
 
-Use `scripts/train_sac.py` / `scripts/train_mbpo.py` with `--print-config-only` and
-`--set dotted.key=value`. All formats pass the common validator. Backend omission
-in legacy HalfCheetah configs continues to mean MuJoCo. See
-[execution and migration guide](../docs/common_runners.md).
+Small test configurations live under `tests/fixtures`, not user experiment presets.
+Use common train/evaluate CLIs. Existing saved output configs remain authoritative
+for their runs and were not rewritten during cleanup.
+
+`runs/{sac,mbpo}_{pushcube,pickcube,stackcube}_500k.yaml`: current seed-0 nominal presets. PickCube/StackCube are pending runtime validation. See [task contracts and server sequence](../docs/maniskill_tasks.md). No per-task runner is required.

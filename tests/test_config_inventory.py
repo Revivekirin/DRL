@@ -4,7 +4,7 @@ import pytest
 from dynamics_shift.experiments.dispatch import load_experiment
 ROOT = Path(__file__).resolve().parents[1]/'configs'
 PRESETS = sorted([*ROOT.glob('archive/sac_*.yaml'), *ROOT.glob('archive/mbpo_*.yaml'),
-                  *ROOT.glob('runs/*.yaml'), *ROOT.glob('testing/*.yaml')])
+                  *ROOT.glob('runs/*.yaml'), *(ROOT.parent/'tests/fixtures').glob('*.yaml')])
 @pytest.mark.parametrize('path', PRESETS, ids=lambda p:p.stem)
 def test_training_preset_loads(path):
     experiment=load_experiment(path)

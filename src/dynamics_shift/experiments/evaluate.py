@@ -36,11 +36,11 @@ def evaluate_checkpoint(checkpoint: str | Path, output_dir: str | Path | None = 
             raise ValueError('Paired MuJoCo SAC uses explicit saved seeds, not --episodes')
         config = replace(config, evaluation=replace(config.evaluation, episodes=episodes))
     if config.env.backend == "maniskill":
-        from dynamics_shift.evaluation.pushcube import evaluate_loaded_checkpoint
+        from dynamics_shift.evaluation.maniskill import evaluate_loaded_checkpoint
         return evaluate_loaded_checkpoint(learner, payload, config, checkpoint, output_dir,
                                           evaluation_overrides=evaluation_overrides, episode_seeds=episode_seeds)
     if evaluation_overrides or episode_seeds is not None:
-        raise ValueError("PushCube evaluation options cannot be used for HalfCheetah")
+        raise ValueError("ManiSkill evaluation options cannot be used for HalfCheetah")
     previous_threads = torch.get_num_threads()
     before = deepcopy(learner.state_dict())
     updates = learner.policy_gradient_steps

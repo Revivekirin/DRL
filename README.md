@@ -1,7 +1,9 @@
 # DRL: SAC and MBPO with explicit environment contracts
 
 Supported protocols: Gymnasium HalfCheetah-v5 (MuJoCo scalar) and ManiSkill
-PushCube-v1 state observations (Panda, CPU scalar SAC or GPU vector SAC/MBPO).
+PushCube-v1, PickCube-v1 and StackCube-v1 state observations (Panda, CPU scalar SAC
+or GPU vector SAC/MBPO). PickCube/StackCube are implemented, pending server runtime
+validation; config availability does not establish training success.
 Other tasks, observation layouts and termination rules are rejected until an
 adapter/model contract is implemented. GPU simulation and learner device are
 separate config fields. Optional ManiSkill dependency remains `.[maniskill]`;
@@ -18,7 +20,7 @@ python scripts/train_mbpo.py --config configs/runs/mbpo_pushcube_500k.yaml --out
 python scripts/evaluate.py --checkpoint '<RUN>/checkpoints/final.pt' --device cuda:0 --eval-sim-backend cpu --eval-num-envs 1 --episodes 20
 ```
 
-Run regressions and bounded smoke first: [complete server sequence](docs/common_runners.md).
+Current regression and audit guide: [complete server sequence](docs/common_runners.md).
 Each training invocation creates a unique directory; existing outputs are preserved.
 ManiSkill checkpoints support learner evaluation/load, **not exact training resume**.
 Do not treat checkpoint loading as continued replay/simulator training.
@@ -30,9 +32,9 @@ configuration is saved as `resolved_config.yaml`; `config.yaml` and checkpoint
 config retain the legacy representation for checkpoint compatibility.
 
 ```bash
-python scripts/train_mbpo.py --config configs/testing/common_mbpo.yaml --print-config-only
+python scripts/train_mbpo.py --config configs/runs/mbpo_pushcube_500k.yaml --print-config-only
 # Explicit overrides use the same validator; no task-specific sweep generator.
-python scripts/train_mbpo.py --config configs/testing/common_mbpo.yaml --set training.real_env_steps=800 --print-config-only
+python scripts/train_mbpo.py --config configs/runs/mbpo_pushcube_500k.yaml --set training.real_env_steps=800 --set training.learning_starts=128 --set training.batch_size=64 --print-config-only
 python scripts/check_tracking.py --run-dir '<RUN>'
 ```
 
@@ -61,15 +63,18 @@ src/dynamics_shift/
   algorithms/sac/, algorithms/mbpo/          # losses vs fitting/rollouts
   models/, data/, evaluation/, utils/
 configs/
-  runs/                                      # current 500k PushCube presets
-  testing/common_*.yaml                      # both algorithms/backends
-  archive/                                   # historical experiment protocols
+  runs/                                      # current 500k task presets
+  archive/                                   # retained historical protocols
   diagnostics/, algo/                        # fitting and legacy includes
   halfcheetah_*.yaml, pushcube_nominal.yaml    # environment-only contracts
 ```
+
+Regression-only small configs live in `tests/fixtures/`; obsolete pilot launch configs were removed. Current rolling records: [protocol](docs/rolling_replay_records.md). No restart of existing training is requested.
 
 The active environment/model explanations remain in [ManiSkill](docs/maniskill.md),
 [MBPO](docs/mbpo.md) and [tracking](docs/pushcube_wandb.md). Historical HalfCheetah
 notes moved to [the archive](docs/archive/halfcheetah_protocol.md). Results in
 `docs/reviews/` are historical observations, not refactor validation. Outputs,
 checkpoints and input data are never migrated or overwritten.
+
+Task contracts, support status, config choices and the ordered server commands: [ManiSkill task guide](docs/maniskill_tasks.md). New tasks use the same three public CLIs.

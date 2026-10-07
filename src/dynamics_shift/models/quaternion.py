@@ -1,4 +1,4 @@
-"""PushCube-only quaternion-aware delta targets (wxyz; q and -q equivalent)."""
+"""Layout-driven quaternion-aware delta targets (wxyz; q and -q equivalent)."""
 import numpy as np
 from dynamics_shift.data.model_data import ModelDataset
 
@@ -22,10 +22,12 @@ def rotation_error(q, truth):
 class QuaternionDelta:
     version = 'aligned_quaternion_delta_v1'
 
-    def __init__(self, layout):
+    def __init__(self, layout, poses=None):
         self.layout = layout
         self.slices = {k: slice(layout[k][0]+3, layout[k][1])
-                       for k in ('extra.tcp_pose', 'extra.obj_pose')}
+                       for k in (poses if poses is not None else ('extra.tcp_pose', 'extra.obj_pose'))}
+        if any(sl.stop - sl.start != 4 for sl in self.slices.values()):
+            raise ValueError('Quaternion pose fields must contain xyz + wxyz')
 
     def canonical(self, obs):
         out = np.asarray(obs).copy()

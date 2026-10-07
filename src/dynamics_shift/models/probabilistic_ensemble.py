@@ -41,9 +41,19 @@ class ProbabilisticEnsemble:
     """
     def __init__(self, obs_dim: int, action_dim: int, config: MBPOConfig,
                  device: str | torch.device = "cpu", seed: int = 0, *,
-                 observation_layout=None, preserve_start: bool = False) -> None:
+                 observation_layout=None, preserve_start: bool = False, observation_codec=None) -> None:
         from dynamics_shift.models.quaternion import QuaternionDelta
-        self.geometry = QuaternionDelta(observation_layout) if observation_layout else None
+        self.observation_codec = observation_codec
+        if observation_codec is not None:
+            if (observation_codec.get('version') != 'maniskill_state_v1'
+                    or observation_codec.get('target') != 'aligned_quaternion_delta_v1'
+                    or observation_codec.get('invariant_policy') != 'learned_delta_with_drift_diagnostic'
+                    or observation_codec.get('boolean_policy') != 'continuous_prediction_without_thresholding'
+                    or observation_codec.get('reward_policy') != 'learned_gaussian_without_clipping'
+                    or observation_codec['layout'] != observation_layout):
+                raise ValueError('Unsupported or inconsistent observation/model codec')
+        poses = observation_codec['quaternion_poses'] if observation_codec is not None else None
+        self.geometry = QuaternionDelta(observation_layout, poses) if observation_layout else None
         self.preserve_start = preserve_start
         self.obs_dim, self.action_dim, self.config = obs_dim, action_dim, config
         self.device = torch.device(device)
@@ -183,6 +193,7 @@ class ProbabilisticEnsemble:
 
     def state_dict(self) -> dict:
         return {"obs_dim": self.obs_dim, "action_dim": self.action_dim, "config": asdict(self.config),
+                "observation_codec": self.observation_codec,
                 "geometry": {"version": self.geometry.version, "layout": self.geometry.layout} if self.geometry else None,
                 "preserve_start": self.preserve_start,
                 "members": self.members.state_dict(), "optimizers": [o.state_dict() for o in self.optimizers],
@@ -190,13 +201,16 @@ class ProbabilisticEnsemble:
                 "train_steps": self.train_steps, "refit_count": self.refit_count, "last_metrics": self.last_metrics}
 
     @classmethod
-    def from_state_dict(cls, state: dict, device: str | torch.device = "cpu") -> "ProbabilisticEnsemble":
+    def from_state_dict(cls, state: dict, device: str | torch.device = "cpu", *, expected_codec=None) -> "ProbabilisticEnsemble":
+        if expected_codec is not None and state.get("observation_codec") != expected_codec:
+            raise ValueError("Checkpoint observation/model codec mismatch or missing legacy metadata")
         geometry = state.get("geometry")
         if geometry and geometry["version"] != "aligned_quaternion_delta_v1":
             raise ValueError("Unsupported dynamics geometry version")
         with torch.random.fork_rng(devices=[]):
             model = cls(state["obs_dim"], state["action_dim"], MBPOConfig(**state["config"]), device,
                         observation_layout=geometry["layout"] if geometry else None,
+                        observation_codec=state.get("observation_codec"),
                         preserve_start=state.get("preserve_start", False))
         model.members.load_state_dict(state["members"])
         for optimizer, saved in zip(model.optimizers, state["optimizers"], strict=True):

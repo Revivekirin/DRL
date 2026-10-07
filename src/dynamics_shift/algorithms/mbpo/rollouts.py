@@ -50,7 +50,7 @@ def generate_rollouts(learner: SACLearner, model: ProbabilisticEnsemble,
 
 
 def mixed_batch(real: RealReplayBuffer, synthetic: ModelReplayBuffer, batch_size: int,
-                real_ratio: float, rng: np.random.Generator) -> tuple[TransitionBatch, int, int]:
+                real_ratio: float, rng: np.random.Generator, *, diagnostics=None) -> tuple[TransitionBatch, int, int]:
     if not isinstance(real, RealReplayBuffer) or not isinstance(synthetic, ModelReplayBuffer):
         raise TypeError("Expected distinct real/model replay roles")
     if batch_size < 2 or not 0 < real_ratio < 1:
@@ -58,6 +58,8 @@ def mixed_batch(real: RealReplayBuffer, synthetic: ModelReplayBuffer, batch_size
     n_real = max(1, min(batch_size - 1, int(batch_size * real_ratio)))
     n_model = batch_size - n_real
     real_batch, model_batch = real.sample(n_real), synthetic.sample(n_model)
+    if diagnostics is not None:
+        diagnostics.observe(model_batch.obs, model_batch.next_obs, model_batch.reward)
     order = rng.permutation(batch_size)
     arrays = {key: np.concatenate((getattr(real_batch, key), getattr(model_batch, key)), axis=0)[order]
               for key in TransitionBatch.__dataclass_fields__}

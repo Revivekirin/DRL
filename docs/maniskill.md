@@ -1,3 +1,6 @@
+> Historical stage-2 record. Current supported tasks, contracts and commands are in
+> [the ManiSkill task guide](maniskill_tasks.md). Restrictions below describe that earlier stage.
+
 > Historical protocol/detail document. Current CLI, paths and execution gates are in [common_runners.md](common_runners.md). Archived budgets are not recommendations for additional runs.
 
 # Stage 2: PushCube environment connection

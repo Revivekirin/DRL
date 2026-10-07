@@ -1,4 +1,4 @@
-"""Nominal PushCube ManiSkill adapter.
+"""Nominal state-task ManiSkill adapter.
 
 Supports:
 - CPU single-environment smoke/evaluation path via CPUGymWrapper.
@@ -45,7 +45,13 @@ def make_maniskill_env(
             f"Original import error: {error}"
         ) from error
 
+    from importlib.metadata import version
+    from .maniskill_tasks import state_task
+    from .state_codec import observation_layout
     settings = config.env
+    task = state_task(settings.id)
+    if version('mani-skill') != '3.0.1':
+        raise ValueError('State/termination contracts audited for mani-skill==3.0.1 only')
     if _video_backend is not None and (settings.sim_backend != "cpu" or settings.num_envs != 1):
         raise ValueError("Video evaluation requires a separate single CPU environment")
 
@@ -62,6 +68,20 @@ def make_maniskill_env(
     )
 
     try:
+        # Read the already initialized scene, without reset/step or RNG draws.
+        layout = observation_layout(env.unwrapped.get_obs(unflattened=True),
+                                    env.unwrapped.get_obs(), task=task)
+        expected_action_dim = {'pd_ee_delta_pos': 4, 'pd_joint_delta_pos': 8}[settings.control_mode]
+        if env.unwrapped.single_action_space.shape != (expected_action_dim,):
+            raise ValueError('Unexpected action meaning/dimension for audited controller')
+        from mani_skill.utils.gym_utils import find_max_episode_steps_value
+        if find_max_episode_steps_value(env) != task.horizon:
+            raise ValueError('ManiSkill horizon differs from the audited task contract')
+        if 'fail' in env.unwrapped.get_info():
+            raise ValueError('Physical-failure termination is not supported by this codec')
+        env.unwrapped._drl_state_contract = dict(
+            observation_codec=task.descriptor(layout),
+            underlying_termination='success_only', supported_dynamics_shifts=list(task.supported_shifts))
         # ---------------------------------------------------------------
         # CPU single-env path
         # ---------------------------------------------------------------

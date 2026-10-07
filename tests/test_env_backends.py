@@ -69,7 +69,7 @@ def test_pushcube_accepts_gpu_configuration(num_envs):
 
 @pytest.mark.parametrize("changes", [dict(num_envs=True), dict(num_envs=2), dict(num_envs=1.0),
                                      dict(sim_backend="unsupported"), dict(obs_mode="rgb"),
-                                     dict(robot_uids="fetch"), dict(id="PickCube-v1"),
+                                     dict(robot_uids="fetch"), dict(id="Unsupported-v1"),
                                      dict(control_mode="*"), dict(reward_mode="dense"),
                                      dict(backend="unknown")])
 def test_unsupported_pushcube_options(changes):

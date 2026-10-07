@@ -1,4 +1,4 @@
-"""Load a learner and evaluate: paired HalfCheetah shift or nominal PushCube."""
+"""Load a learner and evaluate: paired HalfCheetah shift or nominal ManiSkill."""
 import argparse
 import json
 from dynamics_shift.utils.device import check_device
@@ -13,7 +13,7 @@ def main() -> None:
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--eval-sim-backend", choices=["cpu"])
     parser.add_argument("--eval-num-envs", type=int, choices=[1])
-    parser.add_argument("--episode-seeds", type=int, nargs="+", help="Explicit reset seed for every PushCube evaluation episode")
+    parser.add_argument("--episode-seeds", type=int, nargs="+", help="Explicit reset seed for every ManiSkill evaluation episode")
     args = parser.parse_args()
     overrides = {k: v for k, v in {"sim_backend": args.eval_sim_backend,
                  "num_envs": args.eval_num_envs}.items() if v is not None}

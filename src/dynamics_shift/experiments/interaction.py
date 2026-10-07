@@ -402,10 +402,12 @@ def _training_contract(
     *,
     num_envs: int,
 ) -> dict:
+    from dynamics_shift.envs.maniskill_tasks import task_contract
     obs_space = _single_observation_space(env)
     action_space = _single_action_space(env)
 
     return {
+        **task_contract(env),
         "env_id": config.env.id,
         "backend": config.env.backend,
         "observation_dim": int(obs_space.shape[0]),

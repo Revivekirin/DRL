@@ -113,7 +113,7 @@ blocks the next command.
 
 ```bash
 python -u scripts/train_sac.py \
-  --config configs/testing/sac_pushcube_smoke.yaml \
+  --config tests/fixtures/sac_pushcube_smoke.yaml \
   --output-root outputs/stage3_pushcube \
   --no-progress
 ```

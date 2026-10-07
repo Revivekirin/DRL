@@ -1,7 +1,83 @@
 """Read-only audit of completed SAC/MBPO local counters/metric ledger; no ML runtime."""
 import argparse
 import json
+import math
+from collections import defaultdict
 from pathlib import Path
+
+
+
+def audit_episodes(run, rows, metadata):
+    path = run/'metrics/episodes.jsonl'
+    if not path.exists():
+        return 'UNVERIFIED: legacy run has no per-environment episode file'
+    groups = defaultdict(list)
+    for line in path.read_text().splitlines():
+        row = json.loads(line)
+        groups[row['real_env_steps']].append(row)
+    initial = metadata.get('initial_counters', {}).get('episodes', 0)
+    assert sum(map(len,groups.values())) == metadata['episodes']-initial
+    events = defaultdict(list)
+    for row in rows:
+        m = row['metrics']
+        for prefix in ('train/', 'train_episode/'):
+            if prefix+'episode_return' in m:
+                events[m['real_env_steps']].append((prefix,m))
+    assert set(events) == set(groups), 'Episode steps missing from raw log or ledger'
+    index_missing = False
+    for step, episodes in groups.items():
+        if all('env_index' in r for r in episodes):
+            assert len({r['env_index'] for r in episodes}) == len(episodes), 'Duplicate environment episode'
+        else:
+            index_missing = True
+        emitted = events[step]
+        if len(emitted) == 1:
+            prefix,m = emitted[0]
+            assert m.get(prefix+'finished_episodes',len(episodes)) == len(episodes)
+            for key in ('episode_return','episode_length','success_once','success_at_end'):
+                expected = sum(float(r[key]) for r in episodes)/len(episodes)
+                assert math.isclose(m[prefix+key],expected,rel_tol=1e-9,abs_tol=1e-9), (step,key)
+        else:
+            # Older runs logged one SDK event per environment, not a vector mean.
+            assert len(emitted) == len(episodes)
+            for (_,m),r in zip(emitted,episodes):
+                for key in ('episode_return','episode_length','success_once','success_at_end'):
+                    assert math.isclose(m['train/'+key],r[key],rel_tol=1e-9,abs_tol=1e-9)
+    return 'PASS; legacy env_index unavailable' if index_missing else 'PASS'
+
+
+def audit_generations(run, refits, local, ledger=None):
+    path = run/'metrics/synthetic_generations.jsonl'
+    if not path.exists():
+        return 'UNVERIFIED: legacy run has no generation provenance' if refits else 'NOT_APPLICABLE'
+    from dynamics_shift.utils.replay_provenance import ReplayProvenance
+    records = [json.loads(line) for line in path.read_text().splitlines()]
+    assert len(records) == len(refits)
+    replay = ReplayProvenance(records[0]['capacity']) if records else None
+    position = size = 0
+    size_by_step = {}
+    for record,event in zip(records,refits):
+        assert record['before_size'] == size and record['before_position'] == position
+        assert record['real_env_steps'] == event['real_env_steps']
+        assert record['refit'] == event['model/refit'] and record['generated'] == event['model/generated']
+        expected = replay.append(record['refit'],record['real_env_steps'],record['generated'],
+            before_size=size,before_position=position,after_size=record['after_size'],
+            after_position=record['after_position'])
+        assert record == expected, 'FIFO generation history differs'
+        size,position=record['after_size'],record['after_position']
+        size_by_step[record['real_env_steps']] = size
+    if ledger is not None:
+        emitted = [r['metrics'] for r in ledger if 'model_replay/before_position' in r['metrics']]
+        assert len(emitted) == len(records)
+        for record,event in zip(records,emitted):
+            for key,value in record.items():
+                if isinstance(value,(int,float)):
+                    assert event['model_replay/'+key] == value, ('generation ledger mismatch',key)
+    retained = 0
+    for row in local:
+        retained = size_by_step.get(row['real_env_steps'],retained)
+        assert row['model_replay_size'] == retained, 'Replay changed between refits'
+    return 'PASS'
 
 
 def audit(run):
@@ -34,7 +110,9 @@ def audit(run):
                     'synthetic_transition_count','real_policy_samples','synthetic_policy_samples'):
             assert a[key] == b['train/'+key], (key,a[key],b['train/'+key])
     assert all(r['delivery'] in ('offline_local','sdk_accepted_not_cloud_verified') for r in rows)
-    return {'status':'PASS', 'events':len(rows), 'updates':len(updates),
+    episodes_status = audit_episodes(run, rows, metadata)
+    generation_status = audit_generations(run, refits, local, rows)
+    return {'episode_aggregation':episodes_status, 'rolling_provenance':generation_status, 'status':'PASS', 'events':len(rows), 'updates':len(updates),
             'real_env_steps':metadata['real_env_steps'], 'cloud_sync':'not_verified'}
 
 

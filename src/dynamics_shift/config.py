@@ -55,20 +55,17 @@ class EnvConfig:
             return
 
         if self.backend == "maniskill":
-            if self.id != "PushCube-v1":
-                raise ValueError(
-                    "Current ManiSkill integration only supports "
-                    "PushCube-v1"
-                )
+            from dynamics_shift.envs.maniskill_tasks import state_task
+            state_task(self.id)
 
             if self.obs_mode != "state":
                 raise ValueError(
-                    "PushCube SAC currently requires env.obs_mode='state'"
+                    "ManiSkill state runner currently requires env.obs_mode='state'"
                 )
 
             if self.robot_uids != "panda":
                 raise ValueError(
-                    "PushCube SAC currently requires env.robot_uids='panda'"
+                    "ManiSkill state runner currently requires env.robot_uids='panda'"
                 )
 
             allowed_control_modes = {
@@ -85,7 +82,7 @@ class EnvConfig:
 
             if self.reward_mode != "normalized_dense":
                 raise ValueError(
-                    "PushCube SAC currently requires "
+                    "ManiSkill state runner currently requires "
                     "env.reward_mode='normalized_dense'"
                 )
 

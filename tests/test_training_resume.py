@@ -11,7 +11,7 @@ from test_sac_checkpoint import assert_nested_equal
 
 @pytest.mark.training
 def test_split_training_matches_uninterrupted(tmp_path):
-    config = load_run_config(Path(__file__).parents[1] / "configs/testing/sac_smoke.yaml")
+    config = load_run_config(Path(__file__).parents[1] / "tests/fixtures/sac_smoke.yaml")
     config = replace(config, training=replace(config.training, device="cpu"))
     full = train_source(config, tmp_path, show_progress=False)
     partial = train_source(replace(config, training=replace(config.training, real_env_steps=32)),

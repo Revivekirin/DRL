@@ -1,0 +1,49 @@
+schema_version: 1
+algorithm: sac
+name: sac_pickcube_full_500k
+
+seed: 0
+
+env:
+  backend: maniskill
+  id: PickCube-v1
+  obs_mode: state
+  robot_uids: panda
+  control_mode: pd_ee_delta_pos
+  reward_mode: normalized_dense
+  sim_backend: gpu
+  num_envs: 32
+
+sac:
+  hidden_dims: [256, 256, 256]
+  actor_lr: 0.0003
+  critic_lr: 0.0003
+  alpha_lr: 0.0003
+  gamma: 0.8
+  tau: 0.01
+  initial_alpha: 1.0
+  target_entropy: null
+
+training:
+  device: cuda:0
+  checkpoint_every: 50000
+  torch_threads: 1
+  log_every: 1000
+  real_env_steps: 500000
+  batch_size: 1024
+  replay_capacity: 500000
+  learning_starts: 4000
+  utd: 0.5
+
+evaluation:
+  episodes: 20
+  seed: 0
+  interval: 50000
+  termination_policy: terminate_on_success
+
+tracking:
+  mode: online
+  project: dynamics-shift
+  entity: null
+  video_every: 50000
+  video_steps: 1000

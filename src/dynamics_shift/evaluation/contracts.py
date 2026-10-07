@@ -1,4 +1,4 @@
-"""Environment-independent space checks and explicit PushCube checkpoint contract."""
+"""Environment-independent space checks and explicit ManiSkill checkpoint contract."""
 import numpy as np
 
 
@@ -27,10 +27,11 @@ def assert_learner_contract(learner, env):
         raise ValueError("Checkpoint and evaluation spaces differ")
 
 
-def pushcube_contract(config, env):
+def maniskill_contract(config, env):
     if env.ignore_terminations or env.unwrapped.num_envs != 1 or env.unwrapped.gpu_sim_enabled:
-        raise ValueError("Expected single CPU PushCube preserving success termination")
-    return dict(env_id=config.env.id, backend=config.env.backend,
+        raise ValueError("Expected single CPU ManiSkill preserving success termination")
+    from dynamics_shift.envs.maniskill_tasks import task_contract
+    return dict(**task_contract(env), env_id=config.env.id, backend=config.env.backend,
                 observation_dim=env.observation_space.shape[0], action_dim=env.action_space.shape[0],
                 observation_dtype=str(env.observation_space.dtype), action_dtype=str(env.action_space.dtype),
                 action_low=env.action_space.low.tolist(), action_high=env.action_space.high.tolist(),
@@ -53,7 +54,10 @@ def halfcheetah_contract(env):
 def success_flag(info, terminated):
     success = info.get("success")
     if not isinstance(success, (bool, np.bool_)):
-        raise ValueError("PushCube must supply a scalar boolean success")
+        raise ValueError("ManiSkill must supply a scalar boolean success")
     if bool(terminated) != bool(success):
-        raise ValueError("PushCube success termination contract violated")
+        raise ValueError("ManiSkill success termination contract violated")
     return bool(success)
+
+# Backwards-compatible imports for existing integrations.
+pushcube_contract = maniskill_contract

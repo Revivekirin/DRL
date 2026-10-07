@@ -16,7 +16,7 @@ from dynamics_shift.experiments.train_pushcube_sac import _true_next_observation
 
 
 def test_smoke_config():
-    config, model = load_pushcube_mbpo_config(Path(__file__).parents[1] / 'configs/testing/mbpo_pushcube_smoke.yaml')
+    config, model = load_pushcube_mbpo_config(Path(__file__).parents[1] / 'tests/fixtures/mbpo_pushcube_smoke.yaml')
     assert config.env.num_envs == 4 and config.seed == 0
     assert config.training.real_env_steps == 800 and model.rollout_horizon == 1
 

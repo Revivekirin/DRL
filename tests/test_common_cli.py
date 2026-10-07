@@ -12,7 +12,7 @@ ROOT = Path(__file__).parents[1]
 def test_common_cli_resolves_and_dispatches_without_simulation(monkeypatch, algorithm, suffix, backend):
     from types import SimpleNamespace
     import dynamics_shift.experiments.dispatch as module
-    experiment=load_experiment(ROOT/f'configs/testing/common_{algorithm}{suffix}.yaml', algorithm=algorithm)
+    experiment=load_experiment(ROOT/f'tests/fixtures/common_{algorithm}{suffix}.yaml', algorithm=algorithm)
     assert experiment.dispatch_key == (algorithm, backend)
     called=[]
     name=module.RUNNERS[experiment.dispatch_key][1]
@@ -23,17 +23,17 @@ def test_common_cli_resolves_and_dispatches_without_simulation(monkeypatch, algo
     assert parse_experiment(experiment.to_dict()).to_dict() == experiment.to_dict()
 
 @pytest.mark.parametrize('override', ['training.unknown=1','training.real_env_steps=801',
-    'env.num_envs=1','env.id=PickCube-v1','training.utd=0.00000001',
+    'env.num_envs=1','env.id=Unsupported-v1','training.utd=0.00000001',
     'model.rollout_horizon=2'])
 def test_reject_unsupported_before_environment(override):
     with pytest.raises((ValueError,TypeError)):
-        load_experiment(ROOT/'configs/testing/common_mbpo.yaml', overrides=[override])
+        load_experiment(ROOT/'tests/fixtures/common_mbpo.yaml', overrides=[override])
 
 
 def test_algorithm_mismatch_and_resume_rejected():
     with pytest.raises(ValueError):
-        load_experiment(ROOT/'configs/testing/common_mbpo.yaml', algorithm='sac')
-    experiment=load_experiment(ROOT/'configs/testing/common_sac.yaml')
+        load_experiment(ROOT/'tests/fixtures/common_mbpo.yaml', algorithm='sac')
+    experiment=load_experiment(ROOT/'tests/fixtures/common_sac.yaml')
     with pytest.raises(ValueError, match='resume'):
         execute(experiment,'unused',resume='not-read.pt')
 
@@ -50,19 +50,18 @@ def test_full_run_budget_and_preserved_hyperparameters(algorithm):
         assert 1+(t.real_env_steps-t.learning_starts)//e.model.model_train_frequency == 249
 
 
-def test_old_and_public_pilot_configs_preserve_algorithm():
-    old=load_experiment(ROOT/'configs/archive/mbpo_pushcube_pilot_20k.yaml')
+def test_current_rolling_configuration_is_explicit():
     new=load_experiment(ROOT/'configs/runs/mbpo_pushcube_500k.yaml')
-    assert old.run.algo == new.run.algo
-    assert old.model == new.model
-    for key in ('batch_size','learning_starts','utd','replay_capacity','device'):
-        assert getattr(old.run.training,key) == getattr(new.run.training,key)
+    assert new.model.model_replay_capacity == 50000
+    assert new.model.rollout_batch_size == 2048
+    assert new.model.model_train_frequency == 2000
+    assert new.model.real_ratio == .8
 
 @pytest.mark.training
 @pytest.mark.parametrize('algorithm', ['sac','mbpo'])
 def test_common_scalar_runner_and_checkpoint_evaluation(tmp_path,algorithm):
     from dynamics_shift.experiments.evaluate_sac_shift import evaluate_checkpoint
-    e=load_experiment(ROOT/f'configs/testing/common_{algorithm}_mujoco.yaml',
+    e=load_experiment(ROOT/f'tests/fixtures/common_{algorithm}_mujoco.yaml',
                       overrides=['training.device=cpu','tracking.mode=disabled','tracking.video_every=0'])
     run=execute(e,tmp_path,show_progress=False)
     assert (run/'resolved_config.yaml').exists()
@@ -74,7 +73,7 @@ def test_common_scalar_runner_and_checkpoint_evaluation(tmp_path,algorithm):
 def test_success_metric_is_numeric_and_ledger_matches(tmp_path):
     from types import SimpleNamespace
     from dynamics_shift.utils.tracking import Tracker
-    e=load_experiment(ROOT/'configs/testing/common_sac.yaml', overrides=['tracking.mode=disabled','tracking.video_every=0'])
+    e=load_experiment(ROOT/'tests/fixtures/common_sac.yaml', overrides=['tracking.mode=disabled','tracking.video_every=0'])
     tracker=Tracker(e.run,tmp_path)
     tracker.scalars('train', {'success_once':True,'success_at_end':False}, 4)
     row=json.loads((tmp_path/'tracking_metrics.jsonl').read_text())['metrics']

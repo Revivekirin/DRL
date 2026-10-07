@@ -54,7 +54,7 @@ def test_model_fit_normalization_checkpoint_and_shared_update(tmp_path):
 
 @pytest.mark.training
 def test_nominal_mbpo_smoke_and_resume(tmp_path):
-    config = load_mbpo_config(Path(__file__).parents[1] / "configs/testing/mbpo_smoke.yaml")
+    config = load_mbpo_config(Path(__file__).parents[1] / "tests/fixtures/mbpo_smoke.yaml")
     config = replace(config, training=replace(config.training, device="cpu"))
     with patch("dynamics_shift.envs.DynamicsShiftController.__init__", side_effect=AssertionError("No shift events")):
         run = train_mbpo_source(config, tmp_path, show_progress=False)

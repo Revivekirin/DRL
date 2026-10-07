@@ -10,7 +10,7 @@ from dynamics_shift.utils.checkpoint import load_checkpoint
 
 @pytest.mark.training
 def test_cpu_smoke_training(tmp_path):
-    config = load_run_config(Path(__file__).parents[1] / "configs/testing/sac_smoke.yaml")
+    config = load_run_config(Path(__file__).parents[1] / "tests/fixtures/sac_smoke.yaml")
     config = replace(config, training=replace(config.training, device="cpu"))
     run = train_source(config, tmp_path)
     metadata = json.loads((run / "metadata.json").read_text())

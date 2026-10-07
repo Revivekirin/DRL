@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from dynamics_shift.utils.checkpoint import isolated_rng, load_checkpoint
 from dynamics_shift.experiments.config import RunConfig
-from dynamics_shift.evaluation.pushcube import evaluate_loaded_checkpoint, assert_state_equal
+from dynamics_shift.evaluation.maniskill import evaluate_loaded_checkpoint, assert_state_equal
 from dynamics_shift.envs.maniskill import make_maniskill_video_env
 
 

@@ -526,6 +526,15 @@ def train_sac(
                 completed_truncated = None
 
                 if finished_episode_count:
+                    with (run/'metrics/episodes.jsonl').open('a') as episode_file:
+                        for index in finished_indices:
+                            episode_file.write(json.dumps(dict(
+                                real_env_steps=counters['real_env_steps']+num_envs,
+                                env_index=int(index), episode_return=float(episode_returns[index]),
+                                episode_length=int(episode_lengths[index]),
+                                success_once=int(episode_success_once[index]),
+                                success_at_end=int(success_np[index]),
+                                terminated=bool(terminated_np[index]), truncated=bool(truncated_np[index])))+'\n')
                     completed_return = float(
                         np.mean(
                             episode_returns[
@@ -677,10 +686,12 @@ def train_sac(
                     log_due
                     or finished_episode_count
                 ):
-                    with isolated_rng(device):
-                        tracker.scalars("train_episode", {**counters, **losses, "episode_return": completed_return,
-                            "episode_length": completed_length, "success_once": completed_success_once,
-                            "success_at_end": completed_success_at_end}, counters["real_env_steps"])
+                    if finished_episode_count:
+                        with isolated_rng(device):
+                            tracker.scalars("train", {"episode_return": completed_return,
+                                "episode_length": completed_length, "success_once": completed_success_once,
+                                "success_at_end": completed_success_at_end,
+                                "finished_episodes": int(finished_episode_count)}, counters["real_env_steps"])
                     writer.writerow(
                         {
                             **counters,

@@ -156,13 +156,13 @@ python -m pytest -q --run-training tests/test_mbpo_training.py
 
 Training tests require `--run-training`; unmarked tests are prevented from
 calling the SAC update and model-fit entry points. Smoke configs live in
-`configs/testing/`, separate from experiment presets. They remain useful for
+`tests/fixtures/`, separate from experiment presets. They remain useful for
 checkpoint, replay and video regressions; they are not performance experiments.
 
 For an optional remote integration check:
 
 ```bash
-MUJOCO_GL=egl python scripts/train_mbpo.py --config configs/testing/mbpo_video_smoke.yaml --wandb online
+# Obsolete video-smoke launch preset removed; historical outcome below is retained.
 ```
 
 Expected smoke counters are 48 real transitions, 33 policy updates, three refits
@@ -173,7 +173,7 @@ samples. Model optimizer steps depend on early stopping. Verify scalar charts,
 A separate frozen video check uses the exact printed smoke run ID:
 
 ```bash
-MUJOCO_GL=egl python scripts/evaluate_mbpo_video.py --checkpoint outputs/mbpo_video_smoke/seed_0/RUN_ID/checkpoints/final.pt
+# Obsolete task-specific video evaluator command removed; use the common evaluator.
 ```
 
 For the full-hyperparameter 20k diagnostic, expected counters are 41 refits,

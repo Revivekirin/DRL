@@ -1,6 +1,7 @@
-"""Bounded nominal GPU PushCube MBPO; fresh initialization, no exact resume."""
+"""Bounded nominal GPU ManiSkill MBPO; fresh initialization, no exact resume."""
 from .dispatch import save_resolved_config
 from .records import record_update, record_transition
+from dynamics_shift.utils.replay_provenance import ReplayProvenance
 from .artifacts import save_learner_artifact
 from datetime import datetime, timezone
 from importlib.metadata import version
@@ -14,8 +15,8 @@ import torch
 import yaml
 from dynamics_shift.algorithms.sac.learner import SACLearner
 from dynamics_shift.algorithms.mbpo.rollouts import mixed_batch
-from dynamics_shift.algorithms.mbpo.pushcube import (
-    observation_layout, StateDiagnostics, model_errors, generate_pushcube_rollouts,
+from dynamics_shift.algorithms.mbpo.maniskill import (
+    observation_layout, StateDiagnostics, model_errors, generate_maniskill_rollouts,
 )
 from dynamics_shift.config import ExperimentConfig
 from dynamics_shift.data.model_data import RealReplayBuffer, ModelReplayBuffer, ModelDataset
@@ -72,8 +73,13 @@ def train_mbpo(config, settings, output_root='outputs'):
         contract = _training_contract(config, env, num_envs=n)
         if obs.shape != (n, contract['observation_dim']):
             raise ValueError('Unexpected vector observation shape')
-        layout = observation_layout(env.unwrapped.get_obs(unflattened=True), obs)
-        metadata.update(training_environment_contract=contract, observation_layout=layout,
+        codec = contract["observation_codec"]
+        layout = codec["layout"]
+        metadata.update(diagnostic_scopes={
+            'model_synthetic': 'new generation before quaternion normalization',
+            'model_pool': 'first 256 occupied physical slots after refit; stored predictions; no RNG',
+            'model_sampled_batch': 'synthetic subset of first actual update crossing log_every; no extra sample'},
+            training_environment_contract=contract, observation_layout=layout,
             dynamics_geometry='aligned_quaternion_delta_v1', fit_start_is_candidate=True)
         eval_contract = {**contract, 'sim_backend': 'cpu', 'num_envs': 1,
                          'termination_policy': 'terminate_on_success', 'automatic_reset': False}
@@ -85,9 +91,10 @@ def train_mbpo(config, settings, output_root='outputs'):
         od, ad = contract['observation_dim'], contract['action_dim']
         real = RealReplayBuffer(config.training.replay_capacity, od, ad, 0)
         synthetic = ModelReplayBuffer(settings.model_replay_capacity, od, ad, 1)
+        provenance = ReplayProvenance(settings.model_replay_capacity)
         learner = SACLearner(od, action_space.low, action_space.high, config.algo, device)
         learner.record_update_diagnostics = True
-        model = ProbabilisticEnsemble(od, ad, settings, device, 0, observation_layout=layout, preserve_start=True)
+        model = ProbabilisticEnsemble(od, ad, settings, device, 0, observation_layout=layout, preserve_start=True, observation_codec=codec)
         returns, lengths, successes = np.zeros(n), np.zeros(n, dtype=int), np.zeros(n, dtype=bool)
         budget = 0.0
         next_refit = config.training.learning_starts
@@ -98,7 +105,7 @@ def train_mbpo(config, settings, output_root='outputs'):
             save_learner_artifact(run/'checkpoints'/f'{name}.pt', learner, counters,
                                   config, contract, obs)
             with (run / 'checkpoints' / f'{name}_model.pt').open('xb') as stream:
-                torch.save({'model': model.state_dict(), 'training_resume_supported': False,
+                torch.save({'model': model.state_dict(), 'environment_contract': contract, 'training_resume_supported': False,
                             'replay_persisted': False, 'simulator_persisted': False,
                             'initialization': 'from_scratch', 'counters': dict(counters)}, stream)
 
@@ -163,7 +170,7 @@ def train_mbpo(config, settings, output_root='outputs'):
                             json.dumps(
                                 {
                                     "real_env_steps": current,
-                                    # "env_index": int(index),
+                                    "env_index": int(index),
                                     "episode_return": float(returns[index]),
                                     "episode_length": int(lengths[index]),
                                     "success_once": int(successes[index]),
@@ -188,12 +195,27 @@ def train_mbpo(config, settings, output_root='outputs'):
                     dataset = ModelDataset.from_real_replay(real, rng, settings.holdout_ratio, settings.model_max_samples)
                     fitted = model.train(dataset)
                     errors = model_errors(model, dataset, layout)
-                    diagnostics = StateDiagnostics(layout)
-                    generated = generate_pushcube_rollouts(learner, model, real, synthetic, settings, rng, diagnostics, contract)
+                    diagnostics = StateDiagnostics(layout, codec)
+                    before_size, before_position = len(synthetic), synthetic.position
+                    generated = generate_maniskill_rollouts(learner, model, real, synthetic, settings, rng, diagnostics, contract)
+                    generation_record = provenance.append(model.refit_count, current, generated,
+                        before_size=before_size, before_position=before_position,
+                        after_size=len(synthetic), after_position=synthetic.position)
+                    with (run/'metrics/synthetic_generations.jsonl').open('a') as history:
+                        history.write(json.dumps(generation_record)+'\n')
+                    tracker.scalars('model_replay', {k:v for k,v in generation_record.items()
+                        if k != 'retained_generations'}, current)
                     if synthetic._arrays['terminated'][:len(synthetic)].any() or synthetic._arrays['truncated'][:len(synthetic)].any():
                         raise ValueError('Synthetic horizon incorrectly stored as episode boundary')
+                    pool_diagnostics = StateDiagnostics(layout, codec)
+                    pool = synthetic._arrays
+                    count = min(len(synthetic), 256)
+                    pool_diagnostics.observe(pool['obs'][:count], pool['next_obs'][:count], pool['reward'][:count])
+                    tracker.scalars('model_pool', {'selection': 'first_256_occupied_physical_slots_no_rng',
+                        'refit': model.refit_count, 'replay_size': len(synthetic),
+                        'stored_normalized_prediction': pool_diagnostics.records}, current)
                     ids = dataset.holdout_indices
-                    real_diagnostics = StateDiagnostics(layout)
+                    real_diagnostics = StateDiagnostics(layout, codec)
                     original = dataset.inputs[ids, :od]
                     real_diagnostics.observe(original, original + dataset.targets[ids, :od], dataset.targets[ids, -1])
                     counters['dynamics_model_refit_count'] = model.refit_count
@@ -221,7 +243,15 @@ def train_mbpo(config, settings, output_root='outputs'):
                     while budget >= 1:
                         if model.refit_count < 1 or not len(synthetic):
                             raise RuntimeError('No synthetic sampling allowed before model fit')
-                        batch, nr, ns = mixed_batch(real, synthetic, config.training.batch_size, settings.real_ratio, rng)
+                        sampled_diagnostics = (StateDiagnostics(layout, codec)
+                            if updates == 0 and current // config.training.log_every != (current-n) // config.training.log_every else None)
+                        batch, nr, ns = mixed_batch(real, synthetic, config.training.batch_size, settings.real_ratio, rng,
+                                                   diagnostics=sampled_diagnostics)
+                        if sampled_diagnostics is not None:
+                            tracker.scalars('model_sampled_batch', {
+                                'selection': 'synthetic_subset_of_first_actual_update_at_log_interval',
+                                'policy_gradient_steps_before_update': learner.policy_gradient_steps,
+                                'synthetic_count': ns, 'stored_normalized_prediction': sampled_diagnostics.records}, current)
                         losses = learner.update(batch)
                         if not all(np.isfinite(v) for v in losses.values()):
                             raise FloatingPointError('Nonfinite learner diagnostics')
@@ -257,7 +287,7 @@ def train_mbpo(config, settings, output_root='outputs'):
                     while next_checkpoint <= current:
                         next_checkpoint += config.training.checkpoint_every
         if not (model.refit_count and counters['policy_gradient_steps'] and counters['final_observation_checks']):
-            raise RuntimeError('Smoke did not exercise fitting, updates and real episode boundaries')
+            raise RuntimeError('Training did not exercise fitting, updates and real episode boundaries')
         persist('final')
         metadata['evaluation'] = _evaluate_saved_checkpoint(run / 'checkpoints/final.pt',
             run / 'metrics/evaluation', config, device=device)

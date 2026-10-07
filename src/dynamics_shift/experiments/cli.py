@@ -12,6 +12,7 @@ def train_main(algorithm):
     parser.add_argument('--device')
     parser.add_argument('--set', action='append', default=[], metavar='KEY=VALUE')
     parser.add_argument('--print-config-only', action='store_true')
+    parser.add_argument('--check-env-only', action='store_true', help='Server-only random interaction/contract check, no learner')
     parser.add_argument('--check-device-only', action='store_true')
     parser.add_argument('--no-progress', action='store_true')
     parser.add_argument('--resume', help='Exact MuJoCo continuation only; rejects ManiSkill')
@@ -28,6 +29,10 @@ def train_main(algorithm):
     if args.resume and experiment.run.env.backend == 'maniskill':
         parser.error('Exact ManiSkill training resume is unsupported')
     if args.print_config_only:
+        return
+    if args.check_env_only:
+        from .environment_check import check_environment
+        check_environment(experiment.run)
         return
     if args.check_device_only:
         from dynamics_shift.utils.device import check_device

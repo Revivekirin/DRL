@@ -17,7 +17,7 @@ from dynamics_shift.experiments.train_sac_source import train_source
 from dynamics_shift.utils.checkpoint import save_checkpoint, load_checkpoint
 from test_sac_checkpoint import assert_nested_equal
 
-CONFIG = Path(__file__).resolve().parents[1] / "configs/testing/sac_pushcube_smoke.yaml"
+CONFIG = Path(__file__).resolve().parents[1] / "tests/fixtures/sac_pushcube_smoke.yaml"
 
 
 class BoundaryFixture(gym.Env):

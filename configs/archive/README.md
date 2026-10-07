@@ -9,3 +9,5 @@ rerun them. Current requested 500k runs live in `configs/runs/`.
 protocol, consumed by the tested severity-sweep library rather than a training
 preset. Other SAC/MBPO YAMLs are accepted by the common training CLI. Old output
 configurations remain in place and may intentionally differ from these presets.
+
+Obsolete PushCube pilot and matched-20k launch configs have been removed. Their original run configs/results remain in outputs and are not migrated.
