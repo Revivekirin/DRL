@@ -1,16 +1,18 @@
+> Historical protocol/detail document. Current CLI, paths and execution gates are in [common_runners.md](common_runners.md). Archived budgets are not recommendations for additional runs.
+
 # MBPO source training
 
 ## Current workflow
 
-Use `configs/experiment/mbpo_replay_20k.yaml` for a fresh seed-0 diagnostic.
+Use `configs/archive/mbpo_replay_20k.yaml` for a fresh seed-0 diagnostic.
 Training, model fits, smoke runs and learner-update tests run on the remote
 server. Keep the existing SAC and MBPO outputs/checkpoints.
 
 ```bash
 cd /nfs4/jhkim/repos/DRL
-python scripts/train_mbpo_source.py --config configs/experiment/mbpo_replay_20k.yaml --print-config-only
-python scripts/train_mbpo_source.py --config configs/experiment/mbpo_replay_20k.yaml --check-device-only
-MUJOCO_GL=egl python scripts/train_mbpo_source.py --config configs/experiment/mbpo_replay_20k.yaml --wandb online
+python scripts/train_mbpo.py --config configs/archive/mbpo_replay_20k.yaml --print-config-only
+python scripts/train_mbpo.py --config configs/archive/mbpo_replay_20k.yaml --check-device-only
+MUJOCO_GL=egl python scripts/train_mbpo.py --config configs/archive/mbpo_replay_20k.yaml --wandb online
 ```
 
 Start without `--resume` to isolate the corrected replay behavior from the old
@@ -27,7 +29,7 @@ and 1M presets are retained for later use, not automatically launched.
 - `models/probabilistic_ensemble.py`: real-data Gaussian dynamics ensemble.
 - `data/model_data.py`: separate real/model replay roles and real-only model dataset.
 - `experiments/train_mbpo_source.py`: environment interaction and training orchestration.
-- `scripts/train_mbpo_source.py`: CLI; `scripts/evaluate_mbpo_video.py`: frozen nominal video evaluation.
+- `scripts/train_mbpo.py`: CLI; `scripts/evaluate_mbpo_video.py`: frozen nominal video evaluation.
 
 The source environment is HalfCheetah-v5 with actuator strength 1.0 throughout.
 No shift controller or post-shift adaptation is invoked. Model samples enter the
@@ -160,7 +162,7 @@ checkpoint, replay and video regressions; they are not performance experiments.
 For an optional remote integration check:
 
 ```bash
-MUJOCO_GL=egl python scripts/train_mbpo_source.py --config configs/testing/mbpo_video_smoke.yaml --wandb online
+MUJOCO_GL=egl python scripts/train_mbpo.py --config configs/testing/mbpo_video_smoke.yaml --wandb online
 ```
 
 Expected smoke counters are 48 real transitions, 33 policy updates, three refits

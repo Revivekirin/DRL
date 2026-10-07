@@ -1,0 +1,35 @@
+schema_version: 1
+algorithm: mbpo
+name: mbpo_smoke
+seed: 0
+env:
+  id: HalfCheetah-v5
+dynamics:
+  actuator_scale: 1.0
+sac:
+  hidden_dims: [16, 16]
+model:
+  ensemble_size: 2
+  elite_size: 1
+  model_hidden_dims: [16, 16]
+  model_learning_rate: 0.001
+  model_batch_size: 16
+  model_train_frequency: 16
+  model_max_epochs: 2
+  model_patience: 2
+  model_max_samples: 64
+  holdout_ratio: 0.2
+  rollout_horizon: 1
+  rollout_batch_size: 8
+  model_replay_capacity: 64
+  real_ratio: 0.5
+training:
+  device: cuda:0
+  real_env_steps: 48
+  batch_size: 8
+  replay_capacity: 64
+  learning_starts: 16
+  updates_per_env_step: 1
+  log_every: 16
+  torch_threads: 1
+  checkpoint_every: 16

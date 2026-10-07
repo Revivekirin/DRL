@@ -1,3 +1,5 @@
+> Historical protocol/detail document. Current CLI, paths and execution gates are in [common_runners.md](common_runners.md). Archived budgets are not recommendations for additional runs.
+
 # Stage 3: single-CPU PushCube SAC smoke
 
 Implementation is ready for user-run server validation; stage-3 runtime results
@@ -9,7 +11,7 @@ tests. Natural success termination was not observed in that random-policy run.
 
 ## Execution and termination contracts
 
-The existing `scripts/train_sac_source.py` dispatches by backend. HalfCheetah
+The existing `scripts/train_sac.py` dispatches by backend. HalfCheetah
 keeps its existing runner and full MuJoCo continuation path. PushCube uses
 `train_pushcube_sac.py`, the validated factory/CPUGymWrapper, the unchanged
 SACLearner/actor/critic/loss, and unchanged ReplayBuffer. No MBPO or vector
@@ -110,7 +112,7 @@ blocks the next command.
 ### 2. Seed-0 SAC smoke
 
 ```bash
-python -u scripts/train_sac_source.py \
+python -u scripts/train_sac.py \
   --config configs/testing/sac_pushcube_smoke.yaml \
   --output-root outputs/stage3_pushcube \
   --no-progress
@@ -146,7 +148,7 @@ arbitrary latest checkpoint from a different run.
 
 ```bash
 RUN_DIR='/nfs4/jhkim/repos/DRL/outputs/stage3_pushcube/sac_pushcube_smoke/seed_0/<PRINTED_RUN_ID>'
-python -u scripts/evaluate_sac_shift.py \
+python -u scripts/evaluate.py \
   --checkpoint "$RUN_DIR/checkpoints/final.pt" \
   --device cpu
 ```

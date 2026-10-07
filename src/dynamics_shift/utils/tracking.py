@@ -97,7 +97,7 @@ class Tracker:
                 for index, item in enumerate(value):
                     visit(f"{prefix}/{index}", item)
             elif isinstance(value, (int, float)) and math.isfinite(value):
-                metrics[prefix] = value
+                metrics[prefix] = int(value) if isinstance(value, bool) else value
         visit(namespace, values)
         if metrics:
             self.log(metrics, step, axis=axis, axis_value=axis_value)
@@ -146,10 +146,7 @@ class Tracker:
                 finally:
                     env.close()
         except Exception as error:
-            # A renderer failure must not discard a long training run.
-            warnings.warn(f"Video recording failed at {real_env_steps}: {error}", RuntimeWarning)
-            with (run_dir / "video_errors.log").open("a") as stream:
-                stream.write(f"{real_env_steps}: {error!r}\n")
+            self.error('video', real_env_steps, error)
         finally:
             restore_rng(rng, learner.device)
 

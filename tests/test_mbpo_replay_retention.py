@@ -49,7 +49,7 @@ def test_four_generations_retained_then_oldest_evicted_and_restored():
 
 
 def test_fresh_diagnostic_uses_retained_pool_settings():
-    config = load_mbpo_config('configs/experiment/mbpo_replay_20k.yaml')
+    config = load_mbpo_config('configs/archive/mbpo_replay_20k.yaml')
     assert config.seed == 0 and config.training.real_env_steps == 20000
     assert config.mbpo == MBPOConfig()
     assert config.mbpo.rollout_batch_size == 100000

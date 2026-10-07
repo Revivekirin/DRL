@@ -1,3 +1,5 @@
+> Historical protocol/detail document. Current CLI, paths and execution gates are in [common_runners.md](common_runners.md). Archived budgets are not recommendations for additional runs.
+
 # Stage 2: PushCube environment connection
 
 Stage-2 server validation was completed by the user: three seed-0 episodes,

@@ -8,27 +8,12 @@ from dynamics_shift.experiments.config import RunConfig
 
 
 def load_pushcube_mbpo_config(path):
-    raw = yaml.safe_load(Path(path).read_text())
-    raw = dict(raw)
-    model = MBPOConfig(**raw.pop('mbpo'))
-    config = RunConfig.from_dict(raw)
-    if config.seed != 0 or config.env.backend != 'maniskill' or config.env.id != 'PushCube-v1':
-        raise ValueError('PushCube MBPO smoke requires nominal PushCube, seed 0')
-    if config.env.sim_backend != 'gpu' or config.env.num_envs < 2:
-        raise ValueError('PushCube MBPO requires GPU vector simulation with num_envs >= 2')
-    if not config.training.device.startswith('cuda'):
-        raise ValueError('GPU learner device must be explicit')
-    if config.training.replay_capacity < config.env.num_envs:
-        raise ValueError('Replay must hold at least one full vector batch')
-    if model.rollout_horizon != 1:
-        raise ValueError('PushCube MBPO smoke supports rollout_horizon=1 only')
-    if config.training.learning_starts < 3 or config.training.batch_size < 2:
-        raise ValueError('Need learning_starts >= 3 and batch_size >= 2')
-    if config.training.real_env_steps % config.env.num_envs:
-        raise ValueError('real_env_steps must be divisible by num_envs')
-    if config.training.real_env_steps < max(config.training.learning_starts, config.training.batch_size):
-        raise ValueError('Smoke must reach model fitting and learner updates')
-    return config, model
+    # Compatibility API; all public/legacy formats use one validation path.
+    from dynamics_shift.experiments.dispatch import load_experiment
+    experiment = load_experiment(path, algorithm='mbpo')
+    if experiment.run.env.backend != 'maniskill':
+        raise ValueError('Expected ManiSkill model contract')
+    return experiment.run, experiment.model
 
 
 def observation_layout(structured, flattened):

@@ -16,10 +16,10 @@ from dynamics_shift.config import ExperimentConfig
 from dynamics_shift.data.model_data import RealReplayBuffer, ModelDataset
 from dynamics_shift.envs import make_env
 from dynamics_shift.experiments.config import RunConfig
-from dynamics_shift.experiments.train_pushcube_sac import (
+from dynamics_shift.experiments.interaction import (
     _random_action, _true_next_observation, _add_replay_batch, _to_numpy, _training_contract,
 )
-from dynamics_shift.experiments.train_sac_source import _git_metadata
+from dynamics_shift.experiments.provenance import _git_metadata
 from dynamics_shift.models.probabilistic_ensemble import ProbabilisticEnsemble
 from dynamics_shift.utils.checkpoint import isolated_rng
 from dynamics_shift.utils.device import check_device

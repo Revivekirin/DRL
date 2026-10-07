@@ -1,3 +1,5 @@
+> Historical protocol/detail document. Current CLI, paths and execution gates are in [common_runners.md](common_runners.md). Archived budgets are not recommendations for additional runs.
+
 # Quaternion-aware nominal MBPO pilot (seed 0, bounded)
 
 This revision authorizes preparation, not a claim of learned performance or
@@ -77,7 +79,7 @@ optimum. Keep gamma/UTD matched to SAC to avoid confounding the basic pilot.
 
 Both learner and model start from scratch, empty replay; no source checkpoint is
 automatically used. Future matched real-only configuration is prepared at
-configs/experiment/sac_pushcube_realonly_matched_20k.yaml (same 20000 interactions /
+configs/archive/sac_pushcube_realonly_matched_20k.yaml (same 20000 interactions /
 8016 SAC updates). It is a follow-up experiment, not a prerequisite for this pilot.
 No additional million-transition/multi-seed run or resume command is provided.
 
@@ -133,7 +135,7 @@ python -m pytest -q --run-training \
   tests/test_sac_checkpoint.py tests/test_training_resume.py tests/test_mbpo_training.py
 
 # Bounded tracking smoke, new run, never resume:
-python -u scripts/train_pushcube_mbpo.py \
+python -u scripts/train_mbpo.py \
   --config configs/testing/mbpo_pushcube_tracking_smoke.yaml \
   --output-root outputs/pushcube_mbpo_tracking_smoke --wandb offline
 ```
@@ -145,16 +147,16 @@ Inspect errors, geometry, finite losses and counter consistency; no minimum succ
 rate or universal prediction improvement is required. Check all W&B payloads:
 
 ```bash
-python scripts/check_mbpo_tracking.py --run-dir '<PRINTED_SMOKE_RUN_DIR>'
+python scripts/check_tracking.py --run-dir '<PRINTED_SMOKE_RUN_DIR>'
 ```
 
 Only after regressions, smoke and ledger audit pass, run the prepared pilot:
 
 ```bash
-python -u scripts/train_pushcube_mbpo.py \
-  --config configs/experiment/mbpo_pushcube_pilot_20k.yaml \
+python -u scripts/train_mbpo.py \
+  --config configs/archive/mbpo_pushcube_pilot_20k.yaml \
   --output-root outputs/pushcube_mbpo_pilot_20k --wandb offline
-python scripts/check_mbpo_tracking.py --run-dir '<PRINTED_PILOT_RUN_DIR>'
+python scripts/check_tracking.py --run-dir '<PRINTED_PILOT_RUN_DIR>'
 ```
 
 Expected intermediate checkpoint counters: 5024, 10016, 15008, 20000. Frozen

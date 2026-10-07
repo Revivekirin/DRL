@@ -20,10 +20,9 @@ tracking:
 
 For disabled mode keep video_every=0 as required by the existing PushCube config.
 No W&B/media imports or video environment creation occur in disabled mode.
-For a future authorized MBPO smoke, CLI overrides --wandb offline --video-every
-400 are available; this document does not request additional training.
+For a future authorized MBPO smoke, CLI overrides --wandb offline --set tracking.video_every=400 are available; this document does not request additional training.
 
-Tracker defines real_env_steps as the common custom x-axis for all metric names.
+Tracker uses real_env_steps for training/evaluation/model panels; policy_update/* uses policy_gradient_steps and fit/* uses fitting_round. Each update also retains real_env_steps.
 Losses, alpha, learner updates, episode return/length, success_once/success_at_end,
 config, seed, Git version and training/evaluation contracts are recorded.
 MBPO additionally records refits, member state/reward errors, generated transitions,
@@ -170,8 +169,7 @@ and video evaluation records for checkpoints 100000/450016/500000 at seeds
 21000/21001. Detailed video/episode analysis is explicitly deferred. Offline
 creation does not by itself establish cloud sync completion.
 
-The PushCube MBPO CLI now defaults to --wandb offline. If video_every in its config
-is zero, the CLI defaults video cadence to training.checkpoint_every. Use explicit
---video-every 0 to disable video, or --wandb disabled to disable all tracking.
-Explicit --wandb online remains available. This default is confined to the MBPO
-CLI: programmatic config tracking=disabled still stays disabled. SAC is not rerun.
+The common CLI respects config tracking/video settings without implicit defaults.
+Use --wandb offline or --wandb online explicitly; use --set tracking.video_every=0
+for metrics without videos, or --wandb disabled to disable tracking and videos.
+SAC is not rerun for historical W&B records.

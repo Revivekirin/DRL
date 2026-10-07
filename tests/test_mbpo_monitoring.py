@@ -13,8 +13,8 @@ from dynamics_shift.utils.tracking import Tracker
 
 
 def test_full_diagnostic_parameters():
-    full = load_mbpo_config('configs/experiment/mbpo_halfcheetah_source.yaml')
-    diagnostic = load_mbpo_config('configs/experiment/mbpo_diagnostic_300k.yaml')
+    full = load_mbpo_config('configs/archive/mbpo_halfcheetah_source.yaml')
+    diagnostic = load_mbpo_config('configs/archive/mbpo_diagnostic_300k.yaml')
     assert full.mbpo == diagnostic.mbpo
     assert full.algo == diagnostic.algo
     assert replace(full.training, real_env_steps=300000) == diagnostic.training
@@ -36,7 +36,7 @@ def test_isolated_evaluation(tmp_path, video):
     env.reset.return_value = (np.zeros(3), {})
     env.step.return_value = (np.zeros(3), 2., False, True, {})
     env.render.return_value = np.zeros((4,6,3), dtype=np.uint8)
-    learner = SimpleNamespace(device=torch.device('cpu'), act=MagicMock(return_value=np.zeros(2)))
+    learner = SimpleNamespace(device=torch.device('cpu'), act=MagicMock(return_value=np.zeros(2)), state_dict=lambda: {'updates':0})
     tracker, sdk = MagicMock(), MagicMock()
     original = torch.get_rng_state().clone()
     def action(*args, **kwargs):
@@ -111,10 +111,12 @@ def test_video_error_is_explicit_and_restores_rng(tmp_path):
     env.reset.return_value = (np.zeros(3), {})
     env.step.return_value = (np.zeros(3), 0., False, True, {})
     env.render.return_value = None
-    learner = SimpleNamespace(device=torch.device('cpu'), act=lambda *a, **k: np.zeros(2))
+    learner = SimpleNamespace(device=torch.device('cpu'), act=lambda *a, **k: np.zeros(2), state_dict=lambda: {'updates':0})
     original = torch.get_rng_state().clone()
     with patch('dynamics_shift.algorithms.mbpo.monitoring.make_env', return_value=env), patch.dict('sys.modules', {'wandb': MagicMock()}):
-        with pytest.raises(RuntimeError, match='render_mode=rgb_array'):
-            evaluate_nominal(learner, MBPORunConfig(), MagicMock(), tmp_path, 48, record_video=True)
+        tracker = MagicMock()
+        result = evaluate_nominal(learner, MBPORunConfig(), tracker, tmp_path, 48, record_video=True)
+        assert result['eval/source/mean_return'] == 0.
+        tracker.error.assert_called_once()
     assert torch.equal(original, torch.get_rng_state())
-    env.close.assert_called_once()
+    assert env.close.call_count == 2

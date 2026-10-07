@@ -8,7 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 import yaml
 from dynamics_shift.experiments.config import RunConfig, TrackingConfig
-from dynamics_shift.experiments.train_sac_source import _git_metadata
+from dynamics_shift.experiments.provenance import _git_metadata
 from dynamics_shift.utils.tracking import Tracker
 
 

@@ -1,3 +1,5 @@
+> Historical protocol/detail document. Current CLI, paths and execution gates are in [common_runners.md](common_runners.md). Archived budgets are not recommendations for additional runs.
+
 # PushCube nominal MBPO smoke
 
 This is a new nominal run from scratch, training seed 0. Both SAC and ensemble
@@ -107,7 +109,7 @@ Require zero failures. Contract fixtures are not physical simulator validation.
 Then run only this bounded smoke:
 
 ```bash
-python -u scripts/train_pushcube_mbpo.py \
+python -u scripts/train_mbpo.py \
   --config configs/testing/mbpo_pushcube_smoke.yaml \
   --output-root outputs/pushcube_mbpo_smoke
 ```

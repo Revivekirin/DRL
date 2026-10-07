@@ -1,0 +1,56 @@
+schema_version: 1
+algorithm: mbpo
+name: mbpo_pushcube_full_500k
+seed: 0
+env:
+  backend: maniskill
+  id: PushCube-v1
+  obs_mode: state
+  robot_uids: panda
+  control_mode: pd_ee_delta_pos
+  reward_mode: normalized_dense
+  sim_backend: gpu
+  num_envs: 32
+sac:
+  hidden_dims: [256, 256, 256]
+  actor_lr: 0.0003
+  critic_lr: 0.0003
+  alpha_lr: 0.0003
+  gamma: 0.8
+  tau: 0.01
+  initial_alpha: 1.0
+training:
+  device: cuda:0
+  real_env_steps: 500000
+  batch_size: 1024
+  replay_capacity: 500000
+  learning_starts: 4000
+  utd: 0.5
+  checkpoint_every: 50000
+  log_every: 1000
+  torch_threads: 1
+model:
+  ensemble_size: 3
+  elite_size: 2
+  model_hidden_dims: [64, 64]
+  model_batch_size: 256
+  model_max_epochs: 5
+  model_patience: 3
+  model_max_samples: 10000
+  model_train_frequency: 2000
+  holdout_ratio: 0.2
+  rollout_horizon: 1
+  rollout_batch_size: 2048
+  model_replay_capacity: 2048
+  real_ratio: 0.8
+evaluation:
+  episodes: 20
+  seed: 0
+  interval: 50000
+  termination_policy: terminate_on_success
+tracking:
+  mode: online
+  project: dynamics-shift
+  video_every: 50000
+  video_episodes: 2
+  video_seed: 21000

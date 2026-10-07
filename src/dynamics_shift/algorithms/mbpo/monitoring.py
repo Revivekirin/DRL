@@ -4,6 +4,7 @@ import torch
 from dynamics_shift.config import ExperimentConfig
 from dynamics_shift.envs import make_env
 from dynamics_shift.utils.checkpoint import capture_rng, restore_rng
+from dynamics_shift.evaluation.state import frozen_learner
 
 
 class RolloutDiagnostics:
@@ -45,6 +46,7 @@ def video_array(frames):
     return np.ascontiguousarray(array.transpose(0, 3, 1, 2))
 
 
+@frozen_learner
 def evaluate_nominal(learner, config, tracker, run_dir, step, *, record_video=False):
     """No access to training environment, replay, model, or training counters."""
     state = capture_rng(learner.device)
@@ -76,6 +78,9 @@ def evaluate_nominal(learner, config, tracker, run_dir, step, *, record_video=Fa
         tracker.log(metrics, step)
         return {k: v for k, v in metrics.items() if not k.startswith('video/')}
     except Exception as error:
+        if record_video:
+            tracker.error('nominal_video', step, error)
+            return evaluate_nominal(learner, config, tracker, run_dir, step, record_video=False)
         raise RuntimeError(f"MBPO evaluation failed at real_env_steps={step}; render_mode={'rgb_array' if record_video else None}; frames={len(frames)}; output={run_dir}: {error}") from error
     finally:
         if env is not None:

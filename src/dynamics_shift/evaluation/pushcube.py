@@ -47,26 +47,7 @@ def collect_episodes(learner, env, *, seed, episodes, horizon, episode_seeds=Non
     return rows
 
 
-def assert_state_equal(before, after):
-    """Include optimizer, temperature, targets and counters, not just actor weights."""
-    if isinstance(before, torch.Tensor):
-        equal = torch.equal(before, after)
-    elif isinstance(before, np.ndarray):
-        equal = np.array_equal(before, after)
-    elif isinstance(before, dict):
-        equal = before.keys() == after.keys()
-        if equal:
-            for key in before:
-                assert_state_equal(before[key], after[key])
-    elif isinstance(before, (tuple, list)):
-        equal = len(before) == len(after)
-        if equal:
-            for a, b in zip(before, after):
-                assert_state_equal(a, b)
-    else:
-        equal = before == after
-    if not equal:
-        raise RuntimeError("Evaluation changed learner state")
+from .state import assert_state_equal
 
 
 def evaluate_loaded_checkpoint(learner, payload, config, checkpoint, output_dir,
