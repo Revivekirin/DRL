@@ -13,7 +13,7 @@ def test_tracking_logs_environment_counter(tmp_path):
         tracker.log({"train/actor_loss": 1.5}, 42)
         tracker.finish()
     sdk.init.assert_called_once()
-    sdk.init.return_value.log.assert_called_with({"real_env_steps": 42, "train/actor_loss": 1.5})
+    sdk.init.return_value.log.assert_called_with({"real_env_steps": 42, "train/actor_loss": 1.5, "metric_event_id": 1})
     sdk.init.return_value.finish.assert_called_with(exit_code=0)
 
 
@@ -44,7 +44,7 @@ def test_all_metrics_share_axis_and_array_entries_are_explicit(tmp_path):
         tracker.scalars('model', {'state_rmse': [1., 2.], 'missing': None}, 100)
     sdk.init.return_value.define_metric.assert_any_call('*', step_metric='real_env_steps')
     sdk.init.return_value.log.assert_called_with({'real_env_steps': 100,
-        'model/state_rmse/0': 1., 'model/state_rmse/1': 2.})
+        'model/state_rmse/0': 1., 'model/state_rmse/1': 2., 'metric_event_id': 1})
 
 
 def test_reserved_video_seeds_rejected():

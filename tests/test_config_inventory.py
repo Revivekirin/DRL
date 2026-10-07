@@ -23,4 +23,4 @@ def test_smoke_presets_are_only_in_testing():
     assert not list((CONFIG_ROOT / 'experiment').glob('*smoke*'))
     assert {p.name for p in (CONFIG_ROOT / 'testing').glob('*smoke.yaml')} == {
         'sac_smoke.yaml', 'mbpo_smoke.yaml', 'mbpo_video_smoke.yaml', 'sac_pushcube_smoke.yaml',
-        'mbpo_pushcube_smoke.yaml'}
+        'mbpo_pushcube_smoke.yaml', 'mbpo_pushcube_tracking_smoke.yaml'}

@@ -31,10 +31,15 @@ def generate_rollouts(learner: SACLearner, model: ProbabilisticEnsemble,
         selected_mean = means[members, np.arange(batch_size)]
         selected_var = variances[members, np.arange(batch_size)]
         predictions = selected_mean + np.sqrt(selected_var) * rng.standard_normal(selected_mean.shape)
-        next_obs = (obs + predictions[:, :model.obs_dim]).astype(np.float32)
+        raw_next = (model.reconstruct(obs, predictions[:, :model.obs_dim], normalize=False)
+                    if hasattr(model, "reconstruct") else obs + predictions[:, :model.obs_dim])
+        next_obs = (model.reconstruct(obs, predictions[:, :model.obs_dim])
+                    if hasattr(model, "reconstruct") else raw_next).astype(np.float32)
         rewards = predictions[:, -1].astype(np.float32)
         if diagnostics is not None:
-            diagnostics.observe(obs, next_obs, rewards, means, model.elites)
+            diagnostics.observe(obs, raw_next, rewards, means, model.elites)
+            if hasattr(diagnostics, "observe_projected"):
+                diagnostics.observe_projected(next_obs)
         if not np.isfinite(next_obs).all() or not np.isfinite(rewards).all():
             raise FloatingPointError("Nonfinite model rollout; no silent clipping or fallback")
         for o, a, r, no in zip(obs, actions, rewards, next_obs, strict=True):

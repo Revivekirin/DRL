@@ -40,7 +40,11 @@ class ProbabilisticEnsemble:
     Predictions are returned in physical observation/reward coordinates.
     """
     def __init__(self, obs_dim: int, action_dim: int, config: MBPOConfig,
-                 device: str | torch.device = "cpu", seed: int = 0) -> None:
+                 device: str | torch.device = "cpu", seed: int = 0, *,
+                 observation_layout=None, preserve_start: bool = False) -> None:
+        from dynamics_shift.models.quaternion import QuaternionDelta
+        self.geometry = QuaternionDelta(observation_layout) if observation_layout else None
+        self.preserve_start = preserve_start
         self.obs_dim, self.action_dim, self.config = obs_dim, action_dim, config
         self.device = torch.device(device)
         self.members = nn.ModuleList([GaussianDynamics(obs_dim + action_dim, obs_dim + 1,
@@ -64,6 +68,12 @@ class ProbabilisticEnsemble:
         y = None if targets is None else (self._tensor(targets) - n["target_mean"]) / n["target_std"]
         return x, y
 
+    def prepare_dataset(self, dataset):
+        return self.geometry.dataset(dataset, self.obs_dim) if self.geometry else dataset
+
+    def reconstruct(self, obs, delta, normalize=True):
+        return self.geometry.reconstruct(obs, delta, normalize) if self.geometry else obs + delta
+
     def train(self, dataset: ModelDataset) -> dict:
         if not isinstance(dataset, ModelDataset):
             raise TypeError("Expected a real-replay ModelDataset")
@@ -71,6 +81,7 @@ class ProbabilisticEnsemble:
             raise ValueError("Dynamics dataset dimensions differ")
         if not np.isfinite(dataset.inputs).all() or not np.isfinite(dataset.targets).all():
             raise ValueError("Nonfinite model data")
+        dataset = self.prepare_dataset(dataset)
         ti, vi = dataset.train_indices, dataset.holdout_indices
         if len(ti) < 2 or len(vi) < 1 or np.intersect1d(ti, vi).size:
             raise ValueError("Require disjoint nonempty train/holdout partitions")
@@ -80,8 +91,19 @@ class ProbabilisticEnsemble:
                 self.normalization[prefix + "_mean"] = self._tensor(data.mean(0))
                 self.normalization[prefix + "_std"] = self._tensor(np.maximum(data.std(0), 1e-6))
         x, y = self._normalized(dataset.inputs, dataset.targets)
+        starting_nll, kept_start = [], []
         for member, optimizer in zip(self.members, self.optimizers):
+            member.eval()
+            with torch.no_grad():
+                start_loss = float(gaussian_loss(*member(x[vi]), y[vi]))
+            if not np.isfinite(start_loss):
+                raise FloatingPointError("Nonfinite initial validation NLL")
+            starting_nll.append(start_loss)
             best_loss, stale, best = float("inf"), 0, None
+            is_start = False
+            if self.preserve_start:
+                best_loss, best = start_loss, (deepcopy(member.state_dict()), deepcopy(optimizer.state_dict()))
+                is_start = True
             bootstrap = self.rng.choice(ti, size=len(ti), replace=True)
             for _ in range(self.config.model_max_epochs):
                 member.train()
@@ -104,6 +126,7 @@ class ProbabilisticEnsemble:
                     raise FloatingPointError("Nonfinite dynamics validation loss")
                 if val < best_loss:
                     best_loss, stale = val, 0
+                    is_start = False
                     best = (deepcopy(member.state_dict()), deepcopy(optimizer.state_dict()))
                 else:
                     stale += 1
@@ -111,11 +134,13 @@ class ProbabilisticEnsemble:
                     break
             member.load_state_dict(best[0])
             optimizer.load_state_dict(best[1])
+            kept_start.append(is_start)
         self.refit_count += 1
         metrics = self.validation_metrics(dataset.inputs[vi], dataset.targets[vi])
         self.elites = np.argsort(metrics["member_nll"])[:self.config.elite_size].tolist()
         train_metrics = self.validation_metrics(dataset.inputs[ti], dataset.targets[ti])
-        self.last_metrics = {"model_train_loss": train_metrics["member_nll"],
+        self.last_metrics = {"fit_start_validation_nll": starting_nll, "restored_fit_start": kept_start,
+                             "model_train_loss": train_metrics["member_nll"],
                              "model_validation_loss": metrics["member_nll"],
                              "model_validation_rmse": metrics["member_rmse"],
                              "train_samples": len(ti), "holdout_samples": len(vi), "elites": self.elites.copy()}
@@ -123,6 +148,9 @@ class ProbabilisticEnsemble:
 
     @torch.no_grad()
     def predict(self, inputs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        if self.geometry:
+            inputs = inputs.copy()
+            inputs[:, :self.obs_dim] = self.geometry.canonical(inputs[:, :self.obs_dim])
         x, _ = self._normalized(inputs)
         means, variances = [], []
         for member in self.members:
@@ -155,14 +183,21 @@ class ProbabilisticEnsemble:
 
     def state_dict(self) -> dict:
         return {"obs_dim": self.obs_dim, "action_dim": self.action_dim, "config": asdict(self.config),
+                "geometry": {"version": self.geometry.version, "layout": self.geometry.layout} if self.geometry else None,
+                "preserve_start": self.preserve_start,
                 "members": self.members.state_dict(), "optimizers": [o.state_dict() for o in self.optimizers],
                 "normalization": self.normalization, "elites": self.elites, "rng": self.rng.bit_generator.state,
                 "train_steps": self.train_steps, "refit_count": self.refit_count, "last_metrics": self.last_metrics}
 
     @classmethod
     def from_state_dict(cls, state: dict, device: str | torch.device = "cpu") -> "ProbabilisticEnsemble":
+        geometry = state.get("geometry")
+        if geometry and geometry["version"] != "aligned_quaternion_delta_v1":
+            raise ValueError("Unsupported dynamics geometry version")
         with torch.random.fork_rng(devices=[]):
-            model = cls(state["obs_dim"], state["action_dim"], MBPOConfig(**state["config"]), device)
+            model = cls(state["obs_dim"], state["action_dim"], MBPOConfig(**state["config"]), device,
+                        observation_layout=geometry["layout"] if geometry else None,
+                        preserve_start=state.get("preserve_start", False))
         model.members.load_state_dict(state["members"])
         for optimizer, saved in zip(model.optimizers, state["optimizers"], strict=True):
             optimizer.load_state_dict(saved)

@@ -68,7 +68,8 @@ def train_pushcube_mbpo(config, settings, output_root='outputs'):
         if obs.shape != (n, contract['observation_dim']):
             raise ValueError('Unexpected vector observation shape')
         layout = observation_layout(env.unwrapped.get_obs(unflattened=True), obs)
-        metadata.update(training_environment_contract=contract, observation_layout=layout)
+        metadata.update(training_environment_contract=contract, observation_layout=layout,
+            dynamics_geometry='aligned_quaternion_delta_v1', fit_start_is_candidate=True)
         eval_contract = {**contract, 'sim_backend': 'cpu', 'num_envs': 1,
                          'termination_policy': 'terminate_on_success', 'automatic_reset': False}
         metadata['evaluation_environment_contract'] = eval_contract
@@ -80,11 +81,13 @@ def train_pushcube_mbpo(config, settings, output_root='outputs'):
         real = RealReplayBuffer(config.training.replay_capacity, od, ad, 0)
         synthetic = ModelReplayBuffer(settings.model_replay_capacity, od, ad, 1)
         learner = SACLearner(od, action_space.low, action_space.high, config.algo, device)
-        model = ProbabilisticEnsemble(od, ad, settings, device, 0)
+        learner.record_update_diagnostics = True
+        model = ProbabilisticEnsemble(od, ad, settings, device, 0, observation_layout=layout, preserve_start=True)
         returns, lengths, successes = np.zeros(n), np.zeros(n, dtype=int), np.zeros(n, dtype=bool)
         budget = 0.0
         next_refit = config.training.learning_starts
         next_checkpoint = config.training.checkpoint_every
+        next_eval = config.evaluation.interval if config.evaluation.interval else None
 
         def persist(name):
             probe_obs = _to_numpy(obs)[0].copy()
@@ -170,7 +173,8 @@ def train_pushcube_mbpo(config, settings, output_root='outputs'):
                     model_file.flush()
                     with isolated_rng(device):
                         tracker.scalars("model", {**fitted, **errors, "refit": model.refit_count,
-                            "generated": generated, "synthetic_state_diagnostics": diagnostics.records,
+                            "member_optimizer_steps": model.train_steps,
+                            "generated": generated, "synthetic_state_diagnostics_raw": diagnostics.records,
                             "real_state_diagnostics": real_diagnostics.records}, current)
                     print(json.dumps(dict(event='pushcube_mbpo_refit', real_env_steps=current,
                         refit=model.refit_count, generated=generated, **errors)), flush=True)
@@ -192,22 +196,40 @@ def train_pushcube_mbpo(config, settings, output_root='outputs'):
                         counters['synthetic_policy_samples'] += ns
                         updates += 1
                         budget -= 1
+                        counters['policy_gradient_steps'] = learner.policy_gradient_steps
+                        tracker.scalars('policy_update', {**counters, **losses,
+                            'batch_real_count': nr, 'batch_synthetic_count': ns,
+                            'requested_real_ratio': settings.real_ratio,
+                            'actual_synthetic_ratio': ns / (nr + ns),
+                            'real_replay_size': len(real), 'model_replay_size': len(synthetic),
+                            'wall_time_seconds': time.perf_counter()-start}, current,
+                            axis='policy_gradient_steps', axis_value=learner.policy_gradient_steps)
                 counters['policy_gradient_steps'] = learner.policy_gradient_steps
                 elapsed = time.perf_counter() - start
                 train_file.write(json.dumps(dict(**counters, **losses, wall_time_seconds=elapsed,
                     transitions_per_second=current / elapsed, update_budget=budget, updates_this_vector_step=updates,
                     batch_real_count=nr, batch_synthetic_count=ns,
                     actual_batch_synthetic_ratio=ns / (nr + ns) if nr + ns else None,
+                    loss_aggregation="last update in this vector step; exact updates in tracking_metrics.jsonl",
+                    requested_real_ratio=settings.real_ratio,
                     real_replay_size=len(real), model_replay_size=len(synthetic))) + '\n')
                 train_file.flush()
                 with isolated_rng(device):
                     tracker.scalars("train", {**counters, **losses,
                         "actual_batch_synthetic_ratio": ns / (nr + ns) if nr + ns else None,
                         "transitions_per_second": current / elapsed, "wall_time_seconds": elapsed}, current)
-                if current >= next_checkpoint:
+                checkpoint_due = current >= next_checkpoint
+                eval_due = next_eval is not None and current >= next_eval and current < config.training.real_env_steps
+                if checkpoint_due or eval_due:
                     persist(f'step_{current}')
                     with isolated_rng(device):
                         tracker.checkpoint_video(run / f'checkpoints/step_{current}.pt', config, current)
+                    if eval_due:
+                        evaluation = _evaluate_saved_checkpoint(run / f'checkpoints/step_{current}.pt',
+                            run / f'metrics/evaluation_step_{current}', config, device=device)
+                        tracker.scalars('eval', evaluation, current)
+                        while next_eval <= current:
+                            next_eval += config.evaluation.interval
                     while next_checkpoint <= current:
                         next_checkpoint += config.training.checkpoint_every
         if not (model.refit_count and counters['policy_gradient_steps'] and counters['final_observation_checks']):

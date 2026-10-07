@@ -49,7 +49,7 @@ class SACLearner:
         """TimeLimit truncation still bootstraps from the stored final observation."""
         action, log_prob = self.actor.sample(next_obs)
         q1, q2 = self.target_critic(next_obs, action)
-        return reward + self.config.gamma * (
+        return reward + self.config.gamma * (1.0 - terminated) * (
             torch.minimum(q1, q2)
             - self.alpha * log_prob
         )
@@ -98,8 +98,12 @@ class SACLearner:
             for target_param, param in zip(self.target_critic.parameters(), self.critic.parameters(), strict=True):
                 target_param.lerp_(param, self.config.tau)
         self.policy_gradient_steps += 1
-        return {"actor_loss": actor_loss.item(), "critic_loss": critic_loss.item(),
-                "alpha_loss": alpha_loss.item(), "alpha": self.alpha.item()}
+        metrics = {"actor_loss": actor_loss.item(), "critic_loss": critic_loss.item(),
+                   "alpha_loss": alpha_loss.item(), "alpha": self.alpha.item()}
+        if getattr(self, 'record_update_diagnostics', False):
+            metrics.update(entropy_estimate=float(-log_prob.detach().mean()),
+                           policy_q_min_mean=float(torch.minimum(q1, q2).detach().mean()))
+        return metrics
 
     def state_dict(self) -> dict:
         return {"config": asdict(self.config), "obs_dim": self.obs_dim,

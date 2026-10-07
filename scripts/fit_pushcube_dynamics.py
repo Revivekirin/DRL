@@ -95,7 +95,7 @@ def main():
         metadata.update(real_env_steps=total, vector_steps=total//n, train_samples=len(ti), holdout_samples=len(vi),
             train_episode_ids=sorted(set(np.asarray(episode_ids)[ti].tolist())),
             holdout_episode_ids=sorted(set(np.asarray(episode_ids)[vi].tolist())))
-        model = ProbabilisticEnsemble(contract['observation_dim'], contract['action_dim'], model_config, device, 0)
+        model = ProbabilisticEnsemble(contract['observation_dim'], contract['action_dim'], model_config, device, 0, observation_layout=layout, preserve_start=True)
         # Identical standard-normal draws at every round for diagnostic comparability.
         noise = np.random.default_rng(123).standard_normal((len(vi), model.obs_dim+1))
         with (run/'fitting.jsonl').open('x') as stream:
@@ -107,9 +107,15 @@ def main():
                 for member in range(model_config.ensemble_size):
                     predicted = means[member]+np.sqrt(variances[member])*noise
                     diagnostic = StateDiagnostics(layout)
-                    diagnostic.observe(inputs[vi, :model.obs_dim], inputs[vi, :model.obs_dim]+predicted[:, :-1],
+                    diagnostic.observe(inputs[vi, :model.obs_dim], model.reconstruct(inputs[vi, :model.obs_dim], predicted[:, :-1], normalize=False),
                                        predicted[:, -1], means, model.elites)
-                    diagnostics.append({'member': member, **diagnostic.records[0]})
+                    from dynamics_shift.models.quaternion import rotation_error
+                    restored = model.reconstruct(inputs[vi, :model.obs_dim], predicted[:, :-1])
+                    truth = inputs[vi, :model.obs_dim] + targets[vi, :-1]
+                    angles = {key: float(rotation_error(restored[:, sl], truth[:, sl]).mean())
+                              for key, sl in model.geometry.slices.items()}
+                    diagnostics.append({'member': member, **diagnostic.records[0],
+                                        'normalized_angle_mae_rad': angles})
                 row = dict(real_env_steps=total, fitting_round=round_id, member_optimizer_steps=model.train_steps,
                     wall_time_seconds=time.perf_counter()-start, **metrics, **errors,
                     sampled_holdout_validity=diagnostics)
@@ -117,7 +123,7 @@ def main():
                 with (run/f'model_round_{round_id}.pt').open('xb') as file:
                     torch.save({'model': model.state_dict(), 'training_resume_supported': False}, file)
                 with isolated_rng(device):
-                    tracker.scalars('model', row, total)
+                    tracker.scalars('fit', row, total, axis='fitting_round', axis_value=round_id)
                 print(json.dumps({'event':'dynamics_fit_round', 'round':round_id,
                                   'holdout_state_rmse':errors['state_prediction_rmse'],
                                   'holdout_reward_rmse':errors['reward_prediction_rmse']}), flush=True)
