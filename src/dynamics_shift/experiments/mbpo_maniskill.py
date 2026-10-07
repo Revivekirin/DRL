@@ -48,7 +48,9 @@ def train_mbpo(config, settings, output_root='outputs'):
     metadata = dict(algorithm='mbpo', initialization='from_scratch', training_seed=0,
                     training_resume_supported=False, model_training_data='real_replay_only',
                     synthetic_termination_policy='terminated=False; truncated=False; horizon is computation cutoff',
-                    model_replay_retention='clear at each refit; generate fresh horizon-1 transitions',
+                    model_replay_retention=(
+                        'fifo rolling replay; oldest synthetic transitions '
+                        'overwritten at model_replay_capacity'),
                     success_termination='DISABLED in training; inspect success_once and success_at_end',
                     versions={name: version(name) for name in ('mani-skill', 'torch', 'numpy')},
                     status='running', **_git_metadata())
@@ -123,17 +125,62 @@ def train_mbpo(config, settings, output_root='outputs'):
                 returns += _to_numpy(reward).reshape(n)
                 lengths += 1
                 successes |= success
-                for index in np.flatnonzero(done):
+
+                finished_indices = np.flatnonzero(done)
+                finished_episode_count = len(finished_indices)
+
+                if finished_episode_count:
+                    # Aggregate exactly like SAC: one W&B point per vector step.
+                    completed_return = float(
+                        np.mean(returns[finished_indices])
+                    )
+                    completed_length = float(
+                        np.mean(lengths[finished_indices])
+                    )
+                    completed_success_once = float(
+                        np.mean(successes[finished_indices])
+                    )
+                    completed_success_at_end = float(
+                        np.mean(success[finished_indices])
+                    )
+
                     with isolated_rng(device):
-                        tracker.scalars("train", dict(episode_return=float(returns[index]),
-                            episode_length=int(lengths[index]), success_once=int(successes[index]),
-                            success_at_end=int(success[index]), env_index=int(index)), current)
-                    episode_file.write(json.dumps(dict(real_env_steps=current, env_index=int(index),
-                        episode_return=float(returns[index]), episode_length=int(lengths[index]),
-                        success_once=int(successes[index]), success_at_end=int(success[index]),
-                        terminated=bool(term[index]), truncated=bool(trunc[index]), successful_termination=False)) + '\n')
-                counters['episodes'] += int(done.sum())
-                returns[done], lengths[done], successes[done] = 0, 0, False
+                        tracker.scalars(
+                            "train_episode",
+                            {
+                                "episode_return": completed_return,
+                                "episode_length": completed_length,
+                                "success_once": completed_success_once,
+                                "success_at_end": completed_success_at_end,
+                                "finished_episodes": int(finished_episode_count),
+                            },
+                            current,
+                        )
+
+                    # Keep raw per-env episode records in JSONL.
+                    for index in finished_indices:
+                        episode_file.write(
+                            json.dumps(
+                                {
+                                    "real_env_steps": current,
+                                    # "env_index": int(index),
+                                    "episode_return": float(returns[index]),
+                                    "episode_length": int(lengths[index]),
+                                    "success_once": int(successes[index]),
+                                    "success_at_end": int(success[index]),
+                                    "terminated": bool(term[index]),
+                                    "truncated": bool(trunc[index]),
+                                    "successful_termination": False,
+                                }
+                            )
+                            + "\n"
+                        )
+
+                counters["episodes"] += finished_episode_count
+
+                returns[done] = 0.0
+                lengths[done] = 0
+                successes[done] = False
                 episode_file.flush()
                 obs = next_obs  # Wrapper already reset only the finished environments.
 
