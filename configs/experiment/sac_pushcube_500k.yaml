@@ -36,7 +36,7 @@ evaluation:
   termination_policy: terminate_on_success
 
 tracking:
-  mode: disabled
+  mode: online
   project: dynamics-shift
   entity: null
   video_every: 5000
