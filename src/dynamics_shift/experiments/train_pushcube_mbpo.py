@@ -170,7 +170,8 @@ def train_pushcube_mbpo(config, settings, output_root='outputs'):
                     model_file.flush()
                     with isolated_rng(device):
                         tracker.scalars("model", {**fitted, **errors, "refit": model.refit_count,
-                            "generated": generated, "synthetic_state_diagnostics": diagnostics.records}, current)
+                            "generated": generated, "synthetic_state_diagnostics": diagnostics.records,
+                            "real_state_diagnostics": real_diagnostics.records}, current)
                     print(json.dumps(dict(event='pushcube_mbpo_refit', real_env_steps=current,
                         refit=model.refit_count, generated=generated, **errors)), flush=True)
                     while next_refit <= current:
@@ -202,7 +203,7 @@ def train_pushcube_mbpo(config, settings, output_root='outputs'):
                 with isolated_rng(device):
                     tracker.scalars("train", {**counters, **losses,
                         "actual_batch_synthetic_ratio": ns / (nr + ns) if nr + ns else None,
-                        "transitions_per_second": current / elapsed}, current)
+                        "transitions_per_second": current / elapsed, "wall_time_seconds": elapsed}, current)
                 if current >= next_checkpoint:
                     persist(f'step_{current}')
                     with isolated_rng(device):

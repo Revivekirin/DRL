@@ -148,3 +148,12 @@ def generate_pushcube_rollouts(learner, model, real, synthetic, settings, rng, d
     # cutoff is neither a physical terminal nor an environment TimeLimit.
     return generate_rollouts(learner, model, real, synthetic, settings.rollout_batch_size,
                              1, rng, diagnostics=diagnostics)
+
+
+def episode_split(episode_ids, modulus):
+    """Deterministic whole-episode split, fixed across every fit round."""
+    holdout = np.asarray(episode_ids) % modulus == modulus - 1
+    train_ids, holdout_ids = np.flatnonzero(~holdout), np.flatnonzero(holdout)
+    if len(train_ids) < 2 or not len(holdout_ids):
+        raise ValueError('Collection must contain both train and holdout episodes')
+    return train_ids, holdout_ids

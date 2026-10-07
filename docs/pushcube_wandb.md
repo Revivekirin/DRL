@@ -160,3 +160,18 @@ training, in contrast, continues while recording optional-feature failures.
 Send pytest result, printed output paths, provenance.json, video_manifest.json,
 summary.json and tracking_errors.jsonl if present. Do not rerun training to upload
 historical logs or record these checkpoint videos.
+
+## Deferred video review (2026-10-07)
+
+Follow-up analysis target (original files preserved, no media inspection now):
+`/Users/jihyekim/Desktop/DRL/outputs/wandb_posthoc_videos/20261007T003751_21b7bf4c`.
+User reports 70 regression tests passed, 1 deselected, 761 historical log records
+and video evaluation records for checkpoints 100000/450016/500000 at seeds
+21000/21001. Detailed video/episode analysis is explicitly deferred. Offline
+creation does not by itself establish cloud sync completion.
+
+The PushCube MBPO CLI now defaults to --wandb offline. If video_every in its config
+is zero, the CLI defaults video cadence to training.checkpoint_every. Use explicit
+--video-every 0 to disable video, or --wandb disabled to disable all tracking.
+Explicit --wandb online remains available. This default is confined to the MBPO
+CLI: programmatic config tracking=disabled still stays disabled. SAC is not rerun.

@@ -123,3 +123,28 @@ def test_sampled_reward_diagnostics_are_separate_from_mean_predictions():
     assert record['all_finite']
     with pytest.raises(FloatingPointError):
         diag.observe(obs, obs, np.array([np.nan, 0.]))
+
+
+def test_fixed_holdout_does_not_split_episodes():
+    from dynamics_shift.algorithms.mbpo.pushcube import episode_split
+    ids = np.repeat(np.arange(10), 50)
+    train, holdout = episode_split(ids, 5)
+    assert len(train) == 400 and len(holdout) == 100
+    assert set(ids[holdout]) == {4, 9}
+    assert not set(ids[train]) & set(ids[holdout])
+    train2, holdout2 = episode_split(ids, 5)
+    np.testing.assert_array_equal(train, train2)
+    np.testing.assert_array_equal(holdout, holdout2)
+
+
+def test_dynamics_fitting_preset_is_bounded_and_offline():
+    import yaml
+    from dynamics_shift.experiments.config import RunConfig
+    path = Path(__file__).parents[1] / 'configs/diagnostics/pushcube_dynamics_fit.yaml'
+    raw = yaml.safe_load(path.read_text())
+    fitting, mbpo = raw.pop('fitting'), MBPOConfig(**raw.pop('mbpo'))
+    config = RunConfig.from_dict(raw)
+    assert config.seed == 0 and config.tracking.mode == 'offline'
+    assert config.training.real_env_steps == 10000
+    assert fitting['rounds'] == 5 and mbpo.model_max_epochs == 20
+    assert fitting['collection_policy'] == 'uniform_random'

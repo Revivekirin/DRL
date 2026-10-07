@@ -1,0 +1,42 @@
+# Dynamics-only experiment. Not MBPO training and not a resume.
+name: pushcube_dynamics_fit
+seed: 0
+env:
+  backend: maniskill
+  id: PushCube-v1
+  obs_mode: state
+  robot_uids: panda
+  control_mode: pd_ee_delta_pos
+  reward_mode: normalized_dense
+  sim_backend: gpu
+  num_envs: 4
+training:
+  device: cuda:0
+  real_env_steps: 10000
+  replay_capacity: 10000
+  learning_starts: 128
+  batch_size: 64
+  utd: 0.5
+  torch_threads: 1
+evaluation:
+  episodes: 3
+  seed: 20000
+  interval: 0
+  termination_policy: terminate_on_success
+tracking:
+  mode: offline
+  project: dynamics-shift
+  video_every: 0
+mbpo:
+  ensemble_size: 3
+  elite_size: 2
+  model_hidden_dims: [64, 64]
+  model_batch_size: 256
+  model_max_epochs: 20
+  model_patience: 5
+  model_max_samples: 10000
+  rollout_horizon: 1
+fitting:
+  rounds: 5
+  holdout_episode_modulus: 5
+  collection_policy: uniform_random

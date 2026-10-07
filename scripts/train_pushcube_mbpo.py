@@ -9,7 +9,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', required=True)
     parser.add_argument('--output-root', default='outputs/pushcube_mbpo_smoke')
-    parser.add_argument('--wandb', choices=['disabled', 'online', 'offline'])
+    parser.add_argument('--wandb', choices=['disabled', 'online', 'offline'], default='offline')
     parser.add_argument('--video-every', type=int)
     args = parser.parse_args()
     config, model = load_pushcube_mbpo_config(args.config)
@@ -18,6 +18,10 @@ def main():
         overrides['mode'] = args.wandb
     if args.video_every is not None:
         overrides['video_every'] = args.video_every
+    elif args.wandb == 'disabled':
+        overrides['video_every'] = 0
+    elif config.tracking.video_every == 0:
+        overrides['video_every'] = config.training.checkpoint_every
     if overrides:
         config = replace(config, tracking=replace(config.tracking, **overrides))
     print(train_pushcube_mbpo(config, model, args.output_root))
