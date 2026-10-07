@@ -146,7 +146,7 @@ def train_mbpo(config, settings, output_root='outputs'):
 
                     with isolated_rng(device):
                         tracker.scalars(
-                            "train_episode",
+                            "train",
                             {
                                 "episode_return": completed_return,
                                 "episode_length": completed_length,
