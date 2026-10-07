@@ -37,4 +37,5 @@ evaluation:
 
 tracking:
   mode: disabled
-  video_every: 0
+  video_every: 50000
+  video_steps: 1000
