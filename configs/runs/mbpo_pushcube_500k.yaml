@@ -42,7 +42,6 @@ model:
   rollout_horizon: 1
   rollout_batch_size: 2048
   model_replay_capacity: 50000
-  model_replay_retention: rolling
   real_ratio: 0.8
 evaluation:
   episodes: 20
