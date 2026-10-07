@@ -32,6 +32,7 @@ from dynamics_shift.data.replay_buffer import ReplayBuffer
 from dynamics_shift.envs import make_env
 from dynamics_shift.evaluation.contracts import episode_horizon
 from dynamics_shift.utils.tracking import Tracker
+from dynamics_shift.utils.checkpoint import isolated_rng
 from dynamics_shift.utils.checkpoint import (
     save_checkpoint,
 )
@@ -581,6 +582,7 @@ def train_pushcube_sac(
     previous_threads = torch.get_num_threads()
 
     env = None
+    tracker = None
     start = time.perf_counter()
 
     success_terminations = 0
@@ -655,6 +657,12 @@ def train_pushcube_sac(
         metadata["training_environment_contract"] = contract
         metadata["evaluation_environment_contract"] = {**contract, "sim_backend": "cpu",
             "num_envs": 1, "automatic_reset": False, "termination_policy": "terminate_on_success"}
+
+        from dynamics_shift.experiments.train_sac_source import _git_metadata
+        metadata.update(_git_metadata())
+        with isolated_rng(device):
+            tracker = Tracker(config, run)
+            tracker.metadata(metadata)
 
         learner = SACLearner(
             obs_dim=contract[
@@ -844,6 +852,9 @@ def train_pushcube_sac(
                 flush=True,
             )
 
+            with isolated_rng(device):
+                tracker.scalars("eval", summary, counters["real_env_steps"])
+                tracker.checkpoint_video(run / "checkpoints" / name, config, counters["real_env_steps"])
             return summary
 
         persist("initial.pt")
@@ -1162,6 +1173,10 @@ def train_pushcube_sac(
                     log_due
                     or finished_episode_count
                 ):
+                    with isolated_rng(device):
+                        tracker.scalars("train", {**counters, **losses, "episode_return": completed_return,
+                            "episode_length": completed_length, "success_once": completed_success_once,
+                            "success_at_end": completed_success_at_end}, counters["real_env_steps"])
                     writer.writerow(
                         {
                             **counters,
@@ -1411,6 +1426,9 @@ def train_pushcube_sac(
             ),
         )
 
+        if tracker is not None:
+            tracker.metadata(metadata)
+            tracker.finish(failed=metadata["status"] == "failed")
         (
             run / "metadata.json"
         ).write_text(

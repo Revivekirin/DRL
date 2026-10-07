@@ -14,6 +14,7 @@ def make_maniskill_env(
     config: ExperimentConfig,
     *,
     render_mode=None,
+    _video_backend=None,
 ):
     if (
         config.env.backend != "maniskill"
@@ -23,7 +24,7 @@ def make_maniskill_env(
             "Expected nominal ManiSkill config without actuator dynamics"
         )
 
-    if render_mode is not None:
+    if render_mode is not None and _video_backend is None:
         raise ValueError(
             "Current ManiSkill adapter supports headless state observations only"
         )
@@ -45,6 +46,8 @@ def make_maniskill_env(
         ) from error
 
     settings = config.env
+    if _video_backend is not None and (settings.sim_backend != "cpu" or settings.num_envs != 1):
+        raise ValueError("Video evaluation requires a separate single CPU environment")
 
     env = gym.make(
         settings.id,
@@ -54,8 +57,8 @@ def make_maniskill_env(
         reward_mode=settings.reward_mode,
         sim_backend=settings.sim_backend,
         num_envs=settings.num_envs,
-        render_mode=None,
-        render_backend="none",
+        render_mode=render_mode,
+        render_backend=_video_backend or "none",
     )
 
     try:
@@ -105,3 +108,8 @@ def make_maniskill_env(
     except Exception:
         env.close()
         raise
+
+
+def make_maniskill_video_env(config):
+    """Explicit offscreen evaluation only; regular training factory stays headless."""
+    return make_maniskill_env(config, render_mode="rgb_array", _video_backend="gpu")

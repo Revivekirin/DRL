@@ -12,7 +12,7 @@ from dynamics_shift.utils.checkpoint import isolated_rng
 from .contracts import assert_learner_contract, pushcube_contract, success_flag
 
 
-def collect_episodes(learner, env, *, seed, episodes, horizon, episode_seeds=None):
+def collect_episodes(learner, env, *, seed, episodes, horizon, episode_seeds=None, frame_callback=None):
     rows = []
     was_training = learner.actor.training
     learner.actor.eval()
@@ -20,9 +20,13 @@ def collect_episodes(learner, env, *, seed, episodes, horizon, episode_seeds=Non
         for episode in range(episodes):
             episode_seed = episode_seeds[episode] if episode_seeds is not None else seed
             obs, _ = env.reset(seed=episode_seed) if episode_seeds is not None or episode == 0 else env.reset()
+            if frame_callback is not None:
+                frame_callback(env, episode, "reset")
             total, success_once = 0.0, False
             for length in range(1, horizon + 1):
                 obs, reward, terminated, truncated, info = env.step(learner.act(obs, deterministic=True))
+                if frame_callback is not None:
+                    frame_callback(env, episode, "step")
                 success = success_flag(info, terminated)
                 success_once |= success
                 total += float(reward)
@@ -66,7 +70,7 @@ def assert_state_equal(before, after):
 
 
 def evaluate_loaded_checkpoint(learner, payload, config, checkpoint, output_dir,
-                               *, evaluation_overrides=None, episode_seeds=None):
+                               *, evaluation_overrides=None, episode_seeds=None, env_factory=None, frame_callback=None):
     overrides = evaluation_overrides or {}
     if set(overrides) - {"sim_backend", "num_envs"}:
         raise ValueError("Only sim_backend and num_envs are evaluation overrides")
@@ -80,7 +84,7 @@ def evaluate_loaded_checkpoint(learner, payload, config, checkpoint, output_dir,
     with isolated_rng(learner.device):
         try:
             torch.set_num_threads(config.training.torch_threads)
-            env = make_env(ExperimentConfig(eval_env_config, None, config.seed))
+            env = (env_factory or make_env)(ExperimentConfig(eval_env_config, None, config.seed))
             contract = pushcube_contract(replace(config, env=eval_env_config), env)
             saved = payload.get("training_environment_contract", payload.get("environment_contract"))
             unverified = []
@@ -111,7 +115,7 @@ def evaluate_loaded_checkpoint(learner, payload, config, checkpoint, output_dir,
             before_updates = learner.policy_gradient_steps
             rows = collect_episodes(learner, env, seed=config.evaluation.seed,
                 episodes=len(episode_seeds) if episode_seeds is not None else config.evaluation.episodes,
-                horizon=contract["horizon"], episode_seeds=episode_seeds)
+                horizon=contract["horizon"], episode_seeds=episode_seeds, frame_callback=frame_callback)
             assert_state_equal(before, learner.state_dict())
             if learner.policy_gradient_steps != before_updates:
                 raise RuntimeError("Evaluation changed learner update counter")

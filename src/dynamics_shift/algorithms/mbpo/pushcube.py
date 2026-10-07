@@ -18,8 +18,6 @@ def load_pushcube_mbpo_config(path):
         raise ValueError('PushCube MBPO requires GPU vector simulation with num_envs >= 2')
     if not config.training.device.startswith('cuda'):
         raise ValueError('GPU learner device must be explicit')
-    if config.tracking.mode != 'disabled' or config.tracking.video_every:
-        raise ValueError('This smoke supports disabled tracking and no video only')
     if config.evaluation.interval != 0:
         raise ValueError('This bounded smoke evaluates at completion only; evaluation.interval must be 0')
     if config.training.replay_capacity < config.env.num_envs:

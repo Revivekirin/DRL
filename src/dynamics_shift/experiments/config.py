@@ -206,8 +206,16 @@ class TrackingConfig:
     entity: str | None = None
     video_every: int = 50000
     video_steps: int = 1000
+    video_episodes: int = 2
+    video_seed: int = 21000
 
     def __post_init__(self) -> None:
+        if type(self.video_episodes) is not int or not 1 <= self.video_episodes <= 10:
+            raise ValueError("video_episodes must be between 1 and 10")
+        if type(self.video_seed) is not int or self.video_seed < 0:
+            raise ValueError("video_seed must be nonnegative")
+        if set(range(self.video_seed, self.video_seed + self.video_episodes)) & set(range(30000, 30100)):
+            raise ValueError("Reserved final evaluation seeds cannot be used for video")
         if self.mode not in (
             "disabled",
             "online",

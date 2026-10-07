@@ -18,7 +18,8 @@ from dynamics_shift.config import ExperimentConfig
 from dynamics_shift.data.model_data import RealReplayBuffer, ModelReplayBuffer, ModelDataset
 from dynamics_shift.envs import make_env
 from dynamics_shift.models.probabilistic_ensemble import ProbabilisticEnsemble
-from dynamics_shift.utils.checkpoint import save_checkpoint
+from dynamics_shift.utils.checkpoint import save_checkpoint, isolated_rng
+from dynamics_shift.utils.tracking import Tracker
 from dynamics_shift.utils.device import check_device
 from dynamics_shift.experiments.train_sac_source import _git_metadata
 from dynamics_shift.experiments.train_pushcube_sac import (
@@ -49,6 +50,7 @@ def train_pushcube_mbpo(config, settings, output_root='outputs'):
                     versions={name: version(name) for name in ('mani-skill', 'torch', 'numpy')},
                     status='running', **_git_metadata())
     env = None
+    tracker = None
     threads = torch.get_num_threads()
     start = time.perf_counter()
     try:
@@ -70,6 +72,9 @@ def train_pushcube_mbpo(config, settings, output_root='outputs'):
         eval_contract = {**contract, 'sim_backend': 'cpu', 'num_envs': 1,
                          'termination_policy': 'terminate_on_success', 'automatic_reset': False}
         metadata['evaluation_environment_contract'] = eval_contract
+        with isolated_rng(device):
+            tracker = Tracker(config, run)
+            tracker.metadata({**metadata, "mbpo_config": asdict(settings)})
         action_space = _single_action_space(env)
         od, ad = contract['observation_dim'], contract['action_dim']
         real = RealReplayBuffer(config.training.replay_capacity, od, ad, 0)
@@ -129,6 +134,10 @@ def train_pushcube_mbpo(config, settings, output_root='outputs'):
                 lengths += 1
                 successes |= success
                 for index in np.flatnonzero(done):
+                    with isolated_rng(device):
+                        tracker.scalars("train", dict(episode_return=float(returns[index]),
+                            episode_length=int(lengths[index]), success_once=bool(successes[index]),
+                            success_at_end=bool(success[index]), env_index=int(index)), current)
                     episode_file.write(json.dumps(dict(real_env_steps=current, env_index=int(index),
                         episode_return=float(returns[index]), episode_length=int(lengths[index]),
                         success_once=bool(successes[index]), success_at_end=bool(success[index]),
@@ -159,6 +168,9 @@ def train_pushcube_mbpo(config, settings, output_root='outputs'):
                         **fitted, **errors, synthetic_state_diagnostics=diagnostics.records,
                         real_state_diagnostics=real_diagnostics.records)) + '\n')
                     model_file.flush()
+                    with isolated_rng(device):
+                        tracker.scalars("model", {**fitted, **errors, "refit": model.refit_count,
+                            "generated": generated, "synthetic_state_diagnostics": diagnostics.records}, current)
                     print(json.dumps(dict(event='pushcube_mbpo_refit', real_env_steps=current,
                         refit=model.refit_count, generated=generated, **errors)), flush=True)
                     while next_refit <= current:
@@ -187,8 +199,14 @@ def train_pushcube_mbpo(config, settings, output_root='outputs'):
                     actual_batch_synthetic_ratio=ns / (nr + ns) if nr + ns else None,
                     real_replay_size=len(real), model_replay_size=len(synthetic))) + '\n')
                 train_file.flush()
+                with isolated_rng(device):
+                    tracker.scalars("train", {**counters, **losses,
+                        "actual_batch_synthetic_ratio": ns / (nr + ns) if nr + ns else None,
+                        "transitions_per_second": current / elapsed}, current)
                 if current >= next_checkpoint:
                     persist(f'step_{current}')
+                    with isolated_rng(device):
+                        tracker.checkpoint_video(run / f'checkpoints/step_{current}.pt', config, current)
                     while next_checkpoint <= current:
                         next_checkpoint += config.training.checkpoint_every
         if not (model.refit_count and counters['policy_gradient_steps'] and counters['final_observation_checks']):
@@ -196,6 +214,9 @@ def train_pushcube_mbpo(config, settings, output_root='outputs'):
         persist('final')
         metadata['evaluation'] = _evaluate_saved_checkpoint(run / 'checkpoints/final.pt',
             run / 'metrics/evaluation', config, device=device)
+        with isolated_rng(device):
+            tracker.scalars('eval', metadata['evaluation'], counters['real_env_steps'])
+            tracker.checkpoint_video(run / 'checkpoints/final.pt', config, counters['real_env_steps'])
         metadata['status'] = 'complete'
         print(json.dumps(dict(event='pushcube_mbpo_complete', run_dir=str(run.resolve()), **counters)))
         return run
@@ -211,4 +232,7 @@ def train_pushcube_mbpo(config, settings, output_root='outputs'):
             elapsed = time.perf_counter() - start
             metadata.update(counters, wall_time_seconds=elapsed,
                             transitions_per_second=counters['real_env_steps'] / elapsed)
+            if tracker is not None:
+                tracker.metadata(metadata)
+                tracker.finish(failed=metadata['status'] == 'failed')
             (run / 'metadata.json').write_text(json.dumps(metadata, indent=2) + '\n')
