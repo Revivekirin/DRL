@@ -30,12 +30,14 @@ training:
   utd: 0.5
 
 evaluation:
-  episodes: 20
+  episodes: 30
   seed: 0
   interval: 50000
   termination_policy: terminate_on_success
 
 tracking:
   mode: disabled
-  video_every: 50000
+  project: dynamics-shift
+  entity: null
+  video_every: 5000
   video_steps: 1000
