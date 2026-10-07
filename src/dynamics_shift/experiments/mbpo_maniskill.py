@@ -141,7 +141,15 @@ def train_mbpo(config, settings, output_root='outputs'):
                     dataset = ModelDataset.from_real_replay(real, rng, settings.holdout_ratio, settings.model_max_samples)
                     fitted = model.train(dataset)
                     errors = model_errors(model, dataset, layout)
-                    synthetic.clear()
+                    if settings.model_replay_retention == "clear":
+                        synthetic.clear()
+                    elif settings.model_replay_retention == "rolling":
+                        pass
+                    else:
+                        raise ValueError(
+                            f"Unknown model_replay_retention: "
+                            f"{settings.model_replay_retention}"
+                        )
                     diagnostics = StateDiagnostics(layout)
                     generated = generate_pushcube_rollouts(learner, model, real, synthetic, settings, rng, diagnostics, contract)
                     if synthetic._arrays['terminated'][:len(synthetic)].any() or synthetic._arrays['truncated'][:len(synthetic)].any():
