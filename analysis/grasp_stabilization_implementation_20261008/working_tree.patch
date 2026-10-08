@@ -1,0 +1,560 @@
+diff --git a/src/dynamics_shift/algorithms/mbpo/config.py b/src/dynamics_shift/algorithms/mbpo/config.py
+index 7d0f4c4..14dccd0 100644
+--- a/src/dynamics_shift/algorithms/mbpo/config.py
++++ b/src/dynamics_shift/algorithms/mbpo/config.py
+@@ -24,8 +24,14 @@ class MBPOConfig:
+     rollout_batch_size: int = 100000
+     model_replay_capacity: int = 400000
+     real_ratio: float = 0.05
++    binary_features: str = 'legacy_gaussian_delta'
++    transition_diagnostics: bool = False
+ 
+     def __post_init__(self) -> None:
++        if self.binary_features not in ('legacy_gaussian_delta', 'bernoulli_next_v1'):
++            raise ValueError('Unsupported binary_features representation')
++        if type(self.transition_diagnostics) is not bool:
++            raise ValueError('transition_diagnostics must be boolean')
+         object.__setattr__(self, "model_hidden_dims", tuple(self.model_hidden_dims))
+         for name in ("ensemble_size", "elite_size", "model_batch_size", "model_train_frequency",
+                      "model_max_epochs", "model_patience", "model_max_samples", "rollout_horizon",
+diff --git a/src/dynamics_shift/algorithms/mbpo/maniskill.py b/src/dynamics_shift/algorithms/mbpo/maniskill.py
+index ddd80ea..9fd361f 100644
+--- a/src/dynamics_shift/algorithms/mbpo/maniskill.py
++++ b/src/dynamics_shift/algorithms/mbpo/maniskill.py
+@@ -54,6 +54,8 @@ class StateDiagnostics:
+             values = next_obs[:, start:stop]
+             record[key + '_outside_0_1_fraction'] = float(np.mean((values < 0) | (values > 1)))
+             record[key + '_distance_to_boolean_mean'] = float(np.minimum(np.abs(values), np.abs(values-1)).mean())
++            record[key + '_range_violation_max'] = float(np.maximum(np.maximum(-values, values-1), 0).max())
++            record[key + '_distance_to_boolean_max'] = float(np.minimum(np.abs(values), np.abs(values-1)).max())
+         for vector, destination, source in self.codec.get('relations', []):
+             start, stop = self.layout[vector]
+             d, _ = self.layout[destination]
+@@ -77,6 +79,7 @@ def model_errors(model, dataset, layout=None):
+     """
+     if hasattr(model, "prepare_dataset"):
+         dataset = model.prepare_dataset(dataset)
++    binary_ids = model.binary.indices if getattr(model, 'binary', None) else []
+     partitions = {}
+     blocks = dict(layout or {})
+     for key in (getattr(model, 'observation_codec', None) or {}).get('quaternion_poses', ('extra.tcp_pose', 'extra.obj_pose')):
+@@ -113,7 +116,7 @@ def model_errors(model, dataset, layout=None):
+         for key, (start, stop) in blocks.items():
+             partitions[name]['state_blocks'][key] = {
+                 'member_rmse': np.sqrt(np.mean(errors[:, :, start:stop] ** 2, axis=(1, 2))).tolist(),
+-                'zero_delta_baseline_rmse': float(np.sqrt(np.mean(targets[:, start:stop] ** 2))),
++                'zero_delta_baseline_rmse': float(np.sqrt(np.mean((targets[:, start:stop] - dataset.inputs[ids, start:stop] if start in binary_ids and stop == start+1 else targets[:, start:stop]) ** 2))),
+             }
+     validity = {}
+     if getattr(model, 'geometry', None):
+@@ -124,7 +127,7 @@ def model_errors(model, dataset, layout=None):
+         current = dataset.inputs[ids, :model.obs_dim]
+         truth = current + dataset.targets[ids, :model.obs_dim]
+         for label, predictions in [('conditional_mean', means),
+-                                   ('sampled_prediction', means + np.sqrt(variances) * noise)]:
++                                   ('sampled_prediction', model.sample_predictions(means, variances, np.random.default_rng(0)) if hasattr(model, 'sample_predictions') else means + np.sqrt(variances) * noise)]:
+             validity[label] = []
+             for member in range(len(predictions)):
+                 raw = model.reconstruct(current, predictions[member, :, :model.obs_dim], normalize=False)
+@@ -138,7 +141,8 @@ def model_errors(model, dataset, layout=None):
+             'prediction_errors': partitions,
+             'error_semantics': {'array_axis': 'ensemble member index, not elite rank or state coordinate',
+                 'prediction': 'conditional mean in original coordinates; no Gaussian sampling',
+-                'state_target': ('aligned quaternion delta chart; other coordinates next minus current'
++                'binary_target': 'absolute next-state Bernoulli probability' if binary_ids else 'legacy continuous delta',
++                'state_target': ('aligned quaternion delta chart; other nonbinary coordinates next minus current'
+                                  if getattr(model, 'geometry', None) else
+                                  'next observation minus current observation'),
+                 'holdout': 'current refit real snapshot partition; may have appeared in earlier training',
+diff --git a/src/dynamics_shift/algorithms/mbpo/rollouts.py b/src/dynamics_shift/algorithms/mbpo/rollouts.py
+index 412747a..8dde2a6 100644
+--- a/src/dynamics_shift/algorithms/mbpo/rollouts.py
++++ b/src/dynamics_shift/algorithms/mbpo/rollouts.py
+@@ -30,18 +30,29 @@ def generate_rollouts(learner: SACLearner, model: ProbabilisticEnsemble,
+         members = rng.choice(model.elites, size=batch_size)
+         selected_mean = means[members, np.arange(batch_size)]
+         selected_var = variances[members, np.arange(batch_size)]
+-        predictions = selected_mean + np.sqrt(selected_var) * rng.standard_normal(selected_mean.shape)
++        predictions = (model.sample_predictions(selected_mean, selected_var, rng)
++                       if hasattr(model, 'sample_predictions') else
++                       selected_mean + np.sqrt(selected_var) * rng.standard_normal(selected_mean.shape))
+         raw_next = (model.reconstruct(obs, predictions[:, :model.obs_dim], normalize=False)
+                     if hasattr(model, "reconstruct") else obs + predictions[:, :model.obs_dim])
+         next_obs = (model.reconstruct(obs, predictions[:, :model.obs_dim])
+                     if hasattr(model, "reconstruct") else raw_next).astype(np.float32)
+         rewards = predictions[:, -1].astype(np.float32)
++        if diagnostics is not None and getattr(diagnostics, 'capture_extremes', False):
++            ids = np.unique([int(np.argmin(rewards)), int(np.argmax(rewards))])
++            diagnostics.extremes = dict(obs=obs[ids].copy(), action=actions[ids].copy(),
++                next_obs=next_obs[ids].copy(), raw_next=raw_next[ids].copy(), reward=rewards[ids].copy(),
++                selected_member=members[ids].copy(), mean=selected_mean[ids].copy(),
++                variance=selected_var[ids].copy(), sampled_prediction=predictions[ids].copy(),
++                sampling_contribution=(predictions-selected_mean)[ids].copy(), generation_offset=ids)
+         if diagnostics is not None:
+             diagnostics.observe(obs, raw_next, rewards, means, model.elites)
+             if hasattr(diagnostics, "observe_projected"):
+                 diagnostics.observe_projected(next_obs)
+         if not np.isfinite(next_obs).all() or not np.isfinite(rewards).all():
+             raise FloatingPointError("Nonfinite model rollout; no silent clipping or fallback")
++        if getattr(model, 'binary', None):
++            model.binary.check(next_obs[:, model.binary.indices])
+         for o, a, r, no in zip(obs, actions, rewards, next_obs, strict=True):
+             synthetic.add(o, a, float(r), no, False, False)
+         generated += batch_size
+@@ -50,17 +61,25 @@ def generate_rollouts(learner: SACLearner, model: ProbabilisticEnsemble,
+ 
+ 
+ def mixed_batch(real: RealReplayBuffer, synthetic: ModelReplayBuffer, batch_size: int,
+-                real_ratio: float, rng: np.random.Generator, *, diagnostics=None) -> tuple[TransitionBatch, int, int]:
++                real_ratio: float, rng: np.random.Generator, *, diagnostics=None, context=None) -> tuple[TransitionBatch, int, int]:
+     if not isinstance(real, RealReplayBuffer) or not isinstance(synthetic, ModelReplayBuffer):
+         raise TypeError("Expected distinct real/model replay roles")
+     if batch_size < 2 or not 0 < real_ratio < 1:
+         raise ValueError("Require batch_size >= 2 and real_ratio in (0, 1)")
+     n_real = max(1, min(batch_size - 1, int(batch_size * real_ratio)))
+     n_model = batch_size - n_real
+-    real_batch, model_batch = real.sample(n_real), synthetic.sample(n_model)
++    real_batch = real.sample(n_real)
++    if context is None:
++        model_batch = synthetic.sample(n_model)
++    else:
++        indices = synthetic.rng.integers(len(synthetic), size=n_model)
++        model_batch = TransitionBatch(**{k: v[indices] for k, v in synthetic._arrays.items()})
+     if diagnostics is not None:
+         diagnostics.observe(model_batch.obs, model_batch.next_obs, model_batch.reward)
+     order = rng.permutation(batch_size)
++    if context is not None:
++        context['synthetic_mask'] = np.concatenate((np.zeros(n_real, dtype=bool), np.ones(n_model, dtype=bool)))[order]
++        context['synthetic_slot'] = np.concatenate((np.full(n_real, -1), indices))[order]
+     arrays = {key: np.concatenate((getattr(real_batch, key), getattr(model_batch, key)), axis=0)[order]
+               for key in TransitionBatch.__dataclass_fields__}
+     return TransitionBatch(**arrays), n_real, n_model
+diff --git a/src/dynamics_shift/algorithms/sac/learner.py b/src/dynamics_shift/algorithms/sac/learner.py
+index b46d182..e6d29ac 100644
+--- a/src/dynamics_shift/algorithms/sac/learner.py
++++ b/src/dynamics_shift/algorithms/sac/learner.py
+@@ -45,16 +45,20 @@ class SACLearner:
+ 
+     @torch.no_grad()
+     def bellman_target(self, reward: torch.Tensor, next_obs: torch.Tensor,
+-                       terminated: torch.Tensor) -> torch.Tensor:
++                       terminated: torch.Tensor, *, diagnostics=None) -> torch.Tensor:
+         """TimeLimit truncation still bootstraps from the stored final observation."""
+         action, log_prob = self.actor.sample(next_obs)
+         q1, q2 = self.target_critic(next_obs, action)
++        if diagnostics is not None:
++            diagnostics.update(target_q_min=torch.minimum(q1, q2).detach(),
++                               entropy_term=(-self.alpha * log_prob).detach(),
++                               bootstrap_multiplier=(self.config.gamma*(1.0-terminated)).detach())
+         return reward + self.config.gamma * (1.0 - terminated) * (
+             torch.minimum(q1, q2)
+             - self.alpha * log_prob
+         )
+ 
+-    def update(self, batch: TransitionBatch) -> dict[str, float]:
++    def update(self, batch: TransitionBatch, *, diagnostics=None) -> dict[str, float]:
+         tensors = {name: torch.as_tensor(np.asarray(value), dtype=torch.float32, device=self.device)
+                    for name, value in vars(batch).items()}
+         n = tensors["obs"].shape[0]
+@@ -66,8 +70,14 @@ class SACLearner:
+         if any(not torch.all((tensors[k] == 0) | (tensors[k] == 1)) for k in ("terminated", "truncated")):
+             raise ValueError("Terminal flags must be binary")
+         obs, action = tensors["obs"], tensors["action"]
+-        target = self.bellman_target(tensors["reward"], tensors["next_obs"], tensors["terminated"])
++        if diagnostics is None:
++            target = self.bellman_target(tensors["reward"], tensors["next_obs"], tensors["terminated"])
++        else:
++            target = self.bellman_target(tensors["reward"], tensors["next_obs"], tensors["terminated"], diagnostics=diagnostics)
+         q1, q2 = self.critic(obs, action)
++        if diagnostics is not None:
++            diagnostics.update(td_target=target.detach(), td_error_q1=(q1-target).detach(),
++                               td_error_q2=(q2-target).detach(), reward=tensors['reward'].detach())
+         critic_loss = F.mse_loss(q1, target) + F.mse_loss(q2, target)
+         self.critic_optimizer.zero_grad(set_to_none=True)
+         critic_loss.backward()
+diff --git a/src/dynamics_shift/experiments/dispatch.py b/src/dynamics_shift/experiments/dispatch.py
+index 948bb09..45cfddb 100644
+--- a/src/dynamics_shift/experiments/dispatch.py
++++ b/src/dynamics_shift/experiments/dispatch.py
+@@ -65,6 +65,12 @@ def parse_experiment(raw, *, algorithm=None):
+         if 'mbpo' not in raw:
+             raise ValueError('MBPO requires explicit model settings')
+         model = MBPOConfig(**raw['mbpo'])
++        if model.binary_features == 'bernoulli_next_v1':
++            if backend != 'maniskill':
++                raise ValueError('Bernoulli features require a declared ManiSkill boolean codec')
++            from dynamics_shift.envs.maniskill_tasks import state_task
++            if not state_task(raw['env']['id']).booleans:
++                raise ValueError('Task observation has no declared binary feature')
+     if algorithm == 'mbpo' and backend == 'mujoco':
+         config = MBPORunConfig.from_dict(raw)
+     else:
+@@ -138,3 +144,8 @@ def save_resolved_config(run_dir, config, algorithm, model=None):
+     model = model or getattr(config, 'mbpo', None)
+     (run_dir/'resolved_config.yaml').write_text(yaml.safe_dump(
+         Experiment(algorithm, config, model).to_dict(), sort_keys=False))
++    from .provenance import write_run_manifest
++    write_run_manifest(run_dir, Experiment(algorithm, config, model).to_dict(),
++                       seeds={'training': config.seed, 'evaluation': config.evaluation.seed,
++                              'video': config.tracking.video_seed, 'real_replay': 0,
++                              'model_replay': 1 if algorithm == 'mbpo' and config.env.backend == 'maniskill' else None})
+diff --git a/src/dynamics_shift/experiments/mbpo_maniskill.py b/src/dynamics_shift/experiments/mbpo_maniskill.py
+index acd4185..18dda23 100644
+--- a/src/dynamics_shift/experiments/mbpo_maniskill.py
++++ b/src/dynamics_shift/experiments/mbpo_maniskill.py
+@@ -91,10 +91,15 @@ def train_mbpo(config, settings, output_root='outputs'):
+         od, ad = contract['observation_dim'], contract['action_dim']
+         real = RealReplayBuffer(config.training.replay_capacity, od, ad, 0)
+         synthetic = ModelReplayBuffer(settings.model_replay_capacity, od, ad, 1)
++        slot_generation = np.full(settings.model_replay_capacity, -1, dtype=np.int64)
++        slot_step = np.full(settings.model_replay_capacity, -1, dtype=np.int64)
++        if settings.transition_diagnostics:
++            (run/'diagnostic_batches').mkdir()
+         provenance = ReplayProvenance(settings.model_replay_capacity)
+         learner = SACLearner(od, action_space.low, action_space.high, config.algo, device)
+         learner.record_update_diagnostics = True
+         model = ProbabilisticEnsemble(od, ad, settings, device, 0, observation_layout=layout, preserve_start=True, observation_codec=codec)
++        metadata['model_observation_codec'] = model.observation_codec
+         returns, lengths, successes = np.zeros(n), np.zeros(n, dtype=int), np.zeros(n, dtype=bool)
+         budget = 0.0
+         next_refit = config.training.learning_starts
+@@ -196,8 +201,19 @@ def train_mbpo(config, settings, output_root='outputs'):
+                     fitted = model.train(dataset)
+                     errors = model_errors(model, dataset, layout)
+                     diagnostics = StateDiagnostics(layout, codec)
++                    diagnostics.capture_extremes = settings.transition_diagnostics
+                     before_size, before_position = len(synthetic), synthetic.position
+                     generated = generate_maniskill_rollouts(learner, model, real, synthetic, settings, rng, diagnostics, contract)
++                    if settings.transition_diagnostics:
++                        np.savez_compressed(run/'diagnostic_batches'/f'generation_{model.refit_count}_extremes.npz',
++                            **diagnostics.extremes, real_env_steps=current, generation=model.refit_count)
++                    slots = (before_position + np.arange(generated)) % settings.model_replay_capacity
++                    slot_generation[slots] = model.refit_count
++                    slot_step[slots] = current
++                    if settings.transition_diagnostics:
++                        with (run/'metrics/normalizers.jsonl').open('a') as normalizers:
++                            normalizers.write(json.dumps(dict(refit=model.refit_count, real_env_steps=current,
++                                statistics={k:v.detach().cpu().tolist() for k,v in model.normalization.items()}))+'\n')
+                     generation_record = provenance.append(model.refit_count, current, generated,
+                         before_size=before_size, before_position=before_position,
+                         after_size=len(synthetic), after_position=synthetic.position)
+@@ -245,14 +261,33 @@ def train_mbpo(config, settings, output_root='outputs'):
+                             raise RuntimeError('No synthetic sampling allowed before model fit')
+                         sampled_diagnostics = (StateDiagnostics(layout, codec)
+                             if updates == 0 and current // config.training.log_every != (current-n) // config.training.log_every else None)
++                        context = {} if settings.transition_diagnostics and sampled_diagnostics is not None else None
+                         batch, nr, ns = mixed_batch(real, synthetic, config.training.batch_size, settings.real_ratio, rng,
+-                                                   diagnostics=sampled_diagnostics)
++                                                   diagnostics=sampled_diagnostics, context=context)
+                         if sampled_diagnostics is not None:
+                             tracker.scalars('model_sampled_batch', {
+                                 'selection': 'synthetic_subset_of_first_actual_update_at_log_interval',
+                                 'policy_gradient_steps_before_update': learner.policy_gradient_steps,
+                                 'synthetic_count': ns, 'stored_normalized_prediction': sampled_diagnostics.records}, current)
+-                        losses = learner.update(batch)
++                        if context is None:
++                            losses = learner.update(batch)
++                        else:
++                            td = {}
++                            losses = learner.update(batch, diagnostics=td)
++                            mask = context['synthetic_mask']
++                            slots = context['synthetic_slot']
++                            context['generation'] = np.where(mask, slot_generation[np.maximum(slots, 0)], -1)
++                            context['generation_real_step'] = np.where(mask, slot_step[np.maximum(slots, 0)], -1)
++                            arrays = {k:v.detach().cpu().numpy() for k,v in td.items()}
++                            np.savez_compressed(run/'diagnostic_batches'/f'update_{learner.policy_gradient_steps}.npz',
++                                **vars(batch), **{k:v for k,v in arrays.items() if k != 'reward'}, **context,
++                                real_env_steps=current, policy_gradient_steps=learner.policy_gradient_steps)
++                            for source, selected in [('real', ~mask), ('synthetic', mask)]:
++                                for key, value in arrays.items():
++                                    values = value[selected]
++                                    losses[f'diagnostic/{source}/{key}_min'] = float(values.min())
++                                    losses[f'diagnostic/{source}/{key}_max'] = float(values.max())
++                                    losses[f'diagnostic/{source}/{key}_abs_p99'] = float(np.quantile(np.abs(values), .99))
+                         if not all(np.isfinite(v) for v in losses.values()):
+                             raise FloatingPointError('Nonfinite learner diagnostics')
+                         counters['real_policy_samples'] += nr
+diff --git a/src/dynamics_shift/experiments/provenance.py b/src/dynamics_shift/experiments/provenance.py
+index c22689b..b65c28e 100644
+--- a/src/dynamics_shift/experiments/provenance.py
++++ b/src/dynamics_shift/experiments/provenance.py
+@@ -2,6 +2,40 @@
+ from pathlib import Path
+ import subprocess
+ 
++
++def write_run_manifest(run_dir, config, *, seeds):
++    """Capture executable source, dirty patch and installed distributions, never env secrets."""
++    import hashlib
++    import json
++    import platform
++    import sys
++    import zipfile
++    from importlib.metadata import distributions
++    root = Path(__file__).resolve().parents[3]
++    run_dir = Path(run_dir)
++    paths = sorted({p for directory in ('src', 'scripts', 'configs')
++                    for p in (root/directory).rglob('*')
++                    if p.is_file() and p.suffix in ('.py', '.yaml', '.yml', '.toml')})
++    paths += [root/p for p in ('pyproject.toml', 'AGENTS.md', 'uv.lock') if (root/p).exists()]
++    hashes = {}
++    with zipfile.ZipFile(run_dir/'source_snapshot.zip', 'x', zipfile.ZIP_DEFLATED) as archive:
++        for path in paths:
++            relative = str(path.relative_to(root))
++            data = path.read_bytes()
++            hashes[relative] = hashlib.sha256(data).hexdigest()
++            archive.writestr(relative, data)
++    patch = subprocess.run(['git', '-C', str(root), 'diff', '--binary', 'HEAD', '--',
++                            'src', 'scripts', 'configs', 'pyproject.toml', 'AGENTS.md', 'uv.lock'],
++                           capture_output=True, check=True).stdout
++    (run_dir/'source_dirty.patch').write_bytes(patch)
++    manifest = {**_git_metadata(), 'source_sha256': hashes,
++                'patch_scope': 'tracked executable source/config; untracked source included in zip',
++                'dependencies': sorted({f"{d.metadata['Name']}=={d.version}" for d in distributions()}),
++                'python': sys.version, 'executable': sys.executable, 'platform': platform.platform(),
++                'seeds': seeds, 'resolved_config': config, 'exact_resume_supported': False}
++    (run_dir/'run_manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
++    return manifest
++
+ def _git_metadata() -> dict:
+     root = Path(__file__).resolve().parents[3]
+     def run(*args: str) -> str | None:
+@@ -9,4 +43,3 @@ def _git_metadata() -> dict:
+         return result.stdout.strip() if result.returncode == 0 else None
+     return {"git_commit": run("rev-parse", "HEAD"), "git_dirty": bool(run("status", "--porcelain"))}
+ 
+-
+diff --git a/src/dynamics_shift/models/probabilistic_ensemble.py b/src/dynamics_shift/models/probabilistic_ensemble.py
+index 5ba7cd7..2e74287 100644
+--- a/src/dynamics_shift/models/probabilistic_ensemble.py
++++ b/src/dynamics_shift/models/probabilistic_ensemble.py
+@@ -1,4 +1,4 @@
+-"""Bootstrapped Gaussian ensemble predicting [observation delta, reward]."""
++"""Delta/reward ensemble with opt-in Bernoulli next-state boolean coordinates."""
+ from copy import deepcopy
+ from dataclasses import asdict
+ import numpy as np
+@@ -48,10 +48,20 @@ class ProbabilisticEnsemble:
+             if (observation_codec.get('version') != 'maniskill_state_v1'
+                     or observation_codec.get('target') != 'aligned_quaternion_delta_v1'
+                     or observation_codec.get('invariant_policy') != 'learned_delta_with_drift_diagnostic'
+-                    or observation_codec.get('boolean_policy') != 'continuous_prediction_without_thresholding'
++                    or observation_codec.get('boolean_policy') not in ('continuous_prediction_without_thresholding', 'bernoulli_next_v1')
+                     or observation_codec.get('reward_policy') != 'learned_gaussian_without_clipping'
+                     or observation_codec['layout'] != observation_layout):
+                 raise ValueError('Unsupported or inconsistent observation/model codec')
++        self.binary = None
++        if config.binary_features == 'bernoulli_next_v1':
++            from dynamics_shift.models.binary import BinaryNext
++            if observation_codec is None:
++                raise ValueError('Bernoulli features require an explicit observation codec')
++            self.binary = BinaryNext(observation_codec)
++            self.observation_codec = deepcopy(observation_codec)
++            self.observation_codec['boolean_policy'] = 'bernoulli_next_v1'
++        elif observation_codec and observation_codec.get('boolean_policy') == 'bernoulli_next_v1':
++            raise ValueError('Binary codec and model config disagree')
+         poses = observation_codec['quaternion_poses'] if observation_codec is not None else None
+         self.geometry = QuaternionDelta(observation_layout, poses) if observation_layout else None
+         self.preserve_start = preserve_start
+@@ -79,10 +89,34 @@ class ProbabilisticEnsemble:
+         return x, y
+ 
+     def prepare_dataset(self, dataset):
+-        return self.geometry.dataset(dataset, self.obs_dim) if self.geometry else dataset
++        prepared = self.geometry.dataset(dataset, self.obs_dim) if self.geometry else dataset
++        return self.binary.dataset(prepared) if self.binary else prepared
+ 
+     def reconstruct(self, obs, delta, normalize=True):
+-        return self.geometry.reconstruct(obs, delta, normalize) if self.geometry else obs + delta
++        result = self.geometry.reconstruct(obs, delta, normalize) if self.geometry else obs + delta
++        return self.binary.restore(result, delta, normalize) if self.binary else result
++
++    def likelihood(self, mean, logvar, target):
++        if not self.binary:
++            return gaussian_loss(mean, logvar, target)
++        terms = .5 * ((mean - target).square() * (-logvar).exp() + logvar)
++        ids = self.binary.indices
++        # One Bernoulli NLL replaces one Gaussian NLL, same coordinate average.
++        terms = terms.clone()
++        terms[:, ids] = F.binary_cross_entropy_with_logits(mean[:, ids], target[:, ids], reduction='none')
++        return terms.mean()
++
++    def physical_mean(self, mean):
++        result = mean * self.normalization['target_std'] + self.normalization['target_mean']
++        if self.binary:
++            result = result.clone()
++            result[..., self.binary.indices] = mean[..., self.binary.indices].sigmoid()
++        return result
++
++    def sample_predictions(self, means, variances, rng):
++        noise = rng.standard_normal(means.shape)
++        predictions = means + np.sqrt(variances) * noise
++        return self.binary.sample(predictions, means, noise) if self.binary else predictions
+ 
+     def train(self, dataset: ModelDataset) -> dict:
+         if not isinstance(dataset, ModelDataset):
+@@ -100,12 +134,16 @@ class ProbabilisticEnsemble:
+             for prefix, data in (("input", dataset.inputs[ti]), ("target", dataset.targets[ti])):
+                 self.normalization[prefix + "_mean"] = self._tensor(data.mean(0))
+                 self.normalization[prefix + "_std"] = self._tensor(np.maximum(data.std(0), 1e-6))
++            if self.binary:
++                for prefix in ('input', 'target'):
++                    self.normalization[prefix + '_mean'][self.binary.indices] = 0.
++                    self.normalization[prefix + '_std'][self.binary.indices] = 1.
+         x, y = self._normalized(dataset.inputs, dataset.targets)
+         starting_nll, kept_start = [], []
+         for member, optimizer in zip(self.members, self.optimizers):
+             member.eval()
+             with torch.no_grad():
+-                start_loss = float(gaussian_loss(*member(x[vi]), y[vi]))
++                start_loss = float(self.likelihood(*member(x[vi]), y[vi]))
+             if not np.isfinite(start_loss):
+                 raise FloatingPointError("Nonfinite initial validation NLL")
+             starting_nll.append(start_loss)
+@@ -120,7 +158,7 @@ class ProbabilisticEnsemble:
+                 for indices in np.array_split(self.rng.permutation(bootstrap),
+                                               max(1, int(np.ceil(len(ti) / self.config.model_batch_size)))):
+                     ids = torch.as_tensor(indices, device=self.device)
+-                    loss = gaussian_loss(*member(x[ids]), y[ids])
++                    loss = self.likelihood(*member(x[ids]), y[ids])
+                     if not torch.isfinite(loss):
+                         raise FloatingPointError("Nonfinite dynamics loss")
+                     optimizer.zero_grad(set_to_none=True)
+@@ -131,7 +169,7 @@ class ProbabilisticEnsemble:
+                 member.eval()
+                 with torch.no_grad():
+                     ids = torch.as_tensor(vi, device=self.device)
+-                    val = float(gaussian_loss(*member(x[ids]), y[ids]))
++                    val = float(self.likelihood(*member(x[ids]), y[ids]))
+                 if not np.isfinite(val):
+                     raise FloatingPointError("Nonfinite dynamics validation loss")
+                 if val < best_loss:
+@@ -158,6 +196,8 @@ class ProbabilisticEnsemble:
+ 
+     @torch.no_grad()
+     def predict(self, inputs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
++        if self.binary:
++            self.binary.check(inputs[:, self.binary.indices])
+         if self.geometry:
+             inputs = inputs.copy()
+             inputs[:, :self.obs_dim] = self.geometry.canonical(inputs[:, :self.obs_dim])
+@@ -166,8 +206,12 @@ class ProbabilisticEnsemble:
+         for member in self.members:
+             member.eval()
+             mean, logvar = member(x)
+-            means.append(mean * self.normalization["target_std"] + self.normalization["target_mean"])
+-            variances.append(logvar.exp() * self.normalization["target_std"].square())
++            physical = self.physical_mean(mean)
++            variance = logvar.exp() * self.normalization["target_std"].square()
++            if self.binary:
++                variance[..., self.binary.indices] = physical[..., self.binary.indices] * (1 - physical[..., self.binary.indices])
++            means.append(physical)
++            variances.append(variance)
+         return torch.stack(means).cpu().numpy(), torch.stack(variances).cpu().numpy()
+ 
+     @torch.no_grad()
+@@ -180,8 +224,10 @@ class ProbabilisticEnsemble:
+                 stop = start + self.config.model_batch_size
+                 mean, logvar = member(x[start:stop])
+                 count = len(mean)
+-                nll_sum += float(gaussian_loss(mean, logvar, y[start:stop])) * count
+-                mse_sum += float(((mean - y[start:stop]) * self.normalization["target_std"]).square().mean()) * count
++                nll_sum += float(self.likelihood(mean, logvar, y[start:stop])) * count
++                error = (self.physical_mean(mean) - self._tensor(targets[start:stop]) if self.binary else
++                         (mean - y[start:stop]) * self.normalization['target_std'])
++                mse_sum += float(error.square().mean()) * count
+             losses.append(nll_sum / len(x))
+             errors.append(float(np.sqrt(mse_sum / len(x))))
+         return {"member_nll": losses, "member_rmse": errors}
+@@ -217,6 +263,11 @@ class ProbabilisticEnsemble:
+             optimizer.load_state_dict(saved)
+         model.normalization = None if state["normalization"] is None else {
+             k: v.to(model.device) for k, v in state["normalization"].items()}
++        if model.binary and model.normalization is not None:
++            for prefix in ('input', 'target'):
++                if (not torch.all(model.normalization[prefix+'_mean'][model.binary.indices] == 0)
++                    or not torch.all(model.normalization[prefix+'_std'][model.binary.indices] == 1)):
++                    raise ValueError('Bernoulli checkpoint normalization must use mean=0, std=1')
+         model.elites = list(state["elites"])
+         model.rng.bit_generator.state = state["rng"]
+         model.train_steps, model.refit_count = state["train_steps"], state["refit_count"]
+diff --git a/src/dynamics_shift/utils/tracking_audit.py b/src/dynamics_shift/utils/tracking_audit.py
+index 9843418..81e563f 100644
+--- a/src/dynamics_shift/utils/tracking_audit.py
++++ b/src/dynamics_shift/utils/tracking_audit.py
+@@ -81,38 +81,46 @@ def audit_generations(run, refits, local, ledger=None):
+ 
+ 
+ def audit(run):
++    """Stream update events; retain only small episode/refit/provenance records."""
+     run = Path(run)
+     metadata = json.loads((run/'metadata.json').read_text())
+     tracking = json.loads((run/'tracking_summary.json').read_text())
+     assert metadata['status'] == 'complete', metadata['status']
+     assert tracking['tracking_errors'] == 0, tracking
+     initial = metadata.get('initial_counters', {})
+-    rows = [json.loads(line) for line in (run/'tracking_metrics.jsonl').read_text().splitlines()]
+-    assert [r['metrics']['metric_event_id'] for r in rows] == list(range(1,len(rows)+1))
+-    updates = [r['metrics'] for r in rows if 'policy_update/actor_loss' in r['metrics']]
+-    assert len(updates) == (metadata['policy_gradient_steps']-initial.get('policy_gradient_steps',0))
+-    assert [r['policy_gradient_steps'] for r in updates] == list(range(initial.get('policy_gradient_steps',0)+1,metadata['policy_gradient_steps']+1))
+-    assert sum(r['policy_update/batch_real_count'] for r in updates) == (metadata['real_policy_samples']-initial.get('real_policy_samples',0))
+-    assert sum(r['policy_update/batch_synthetic_count'] for r in updates) == (metadata['synthetic_policy_samples']-initial.get('synthetic_policy_samples',0))
+-    for r in updates:
+-        assert r['policy_gradient_steps'] == r['policy_update/policy_gradient_steps']
+-        assert r['real_env_steps'] == r['policy_update/real_env_steps']
+-        count = r['policy_update/batch_real_count'] + r['policy_update/batch_synthetic_count']
+-        assert abs(r['policy_update/actual_synthetic_ratio'] - r['policy_update/batch_synthetic_count']/count) < 1e-12
+-    refits = [r['metrics'] for r in rows if 'model/generated' in r['metrics']]
+-    assert len(refits) == (metadata['dynamics_model_refit_count']-initial.get('dynamics_model_refit_count',0))
+-    assert sum(r['model/generated'] for r in refits) == (metadata['synthetic_transition_count']-initial.get('synthetic_transition_count',0))
+-    local = [json.loads(line) for line in (run/'metrics/train.jsonl').read_text().splitlines()]
+-    emitted = [r['metrics'] for r in rows if 'train/vector_steps' in r['metrics']]
+-    assert len(local) == len(emitted) == (metadata['vector_steps']-initial.get('vector_steps',0))
+-    for a,b in zip(local,emitted):
+-        for key in ('real_env_steps','vector_steps','policy_gradient_steps','wall_time_seconds',
+-                    'synthetic_transition_count','real_policy_samples','synthetic_policy_samples'):
+-            assert a[key] == b['train/'+key], (key,a[key],b['train/'+key])
+-    assert all(r['delivery'] in ('offline_local','sdk_accepted_not_cloud_verified') for r in rows)
+-    episodes_status = audit_episodes(run, rows, metadata)
+-    generation_status = audit_generations(run, refits, local, rows)
+-    return {'episode_aggregation':episodes_status, 'rolling_provenance':generation_status, 'status':'PASS', 'events':len(rows), 'updates':len(updates),
+-            'real_env_steps':metadata['real_env_steps'], 'cloud_sync':'not_verified'}
+-
+-
++    rows, refits, local = [], [], []
++    updates = real_samples = model_samples = events = 0
++    with (run/'metrics/train.jsonl').open() as train, (run/'tracking_metrics.jsonl').open() as ledger:
++        for line in ledger:
++            row = json.loads(line); m = row['metrics']; events += 1
++            assert m['metric_event_id'] == events
++            assert row['delivery'] in ('offline_local','sdk_accepted_not_cloud_verified')
++            if 'policy_update/actor_loss' in m:
++                updates += 1
++                assert m['policy_gradient_steps'] == initial.get('policy_gradient_steps',0)+updates
++                assert m['policy_gradient_steps'] == m['policy_update/policy_gradient_steps']
++                assert m['real_env_steps'] == m['policy_update/real_env_steps']
++                nr,ns=m['policy_update/batch_real_count'],m['policy_update/batch_synthetic_count']
++                assert abs(m['policy_update/actual_synthetic_ratio']-ns/(nr+ns)) < 1e-12
++                real_samples += nr; model_samples += ns
++            if 'model/generated' in m:
++                refits.append(m)
++            if 'train/vector_steps' in m:
++                source = train.readline()
++                assert source, 'Ledger has extra transition events'
++                a=json.loads(source); local.append(a)
++                for key in ('real_env_steps','vector_steps','policy_gradient_steps','wall_time_seconds',
++                            'synthetic_transition_count','real_policy_samples','synthetic_policy_samples'):
++                    assert a[key] == m['train/'+key], (key,a[key],m['train/'+key])
++            if any(k in m for k in ('train/episode_return','train_episode/episode_return','model_replay/before_position')):
++                rows.append(row)
++        assert not train.readline(), 'Local transitions missing from ledger'
++    assert updates == metadata['policy_gradient_steps']-initial.get('policy_gradient_steps',0)
++    assert real_samples == metadata['real_policy_samples']-initial.get('real_policy_samples',0)
++    assert model_samples == metadata['synthetic_policy_samples']-initial.get('synthetic_policy_samples',0)
++    assert len(refits) == metadata['dynamics_model_refit_count']-initial.get('dynamics_model_refit_count',0)
++    assert sum(r['model/generated'] for r in refits) == metadata['synthetic_transition_count']-initial.get('synthetic_transition_count',0)
++    assert len(local) == metadata['vector_steps']-initial.get('vector_steps',0)
++    return dict(episode_aggregation=audit_episodes(run,rows,metadata),
++        rolling_provenance=audit_generations(run,refits,local,rows), status='PASS',
++        events=events, updates=updates, real_env_steps=metadata['real_env_steps'],cloud_sync='not_verified')

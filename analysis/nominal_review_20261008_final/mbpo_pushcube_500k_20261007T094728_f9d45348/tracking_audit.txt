@@ -1,0 +1,9 @@
+{
+  "episode_aggregation": "PASS; legacy env_index unavailable",
+  "rolling_provenance": "UNVERIFIED: legacy run has no generation provenance",
+  "status": "PASS",
+  "events": 264262,
+  "updates": 248016,
+  "real_env_steps": 500000,
+  "cloud_sync": "not_verified"
+}

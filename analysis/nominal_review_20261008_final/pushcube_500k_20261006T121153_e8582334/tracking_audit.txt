@@ -1,0 +1,14 @@
+Traceback (most recent call last):
+  File "/Users/jihyekim/Desktop/DRL/scripts/check_tracking.py", line 10, in <module>
+    result = audit(args.run_dir)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/jihyekim/Desktop/DRL/src/dynamics_shift/utils/tracking_audit.py", line 87, in audit
+    tracking = json.loads((run/'tracking_summary.json').read_text())
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jihyekim/miniconda3/envs/basilisk-rl/lib/python3.11/pathlib.py", line 1058, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jihyekim/miniconda3/envs/basilisk-rl/lib/python3.11/pathlib.py", line 1044, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/jihyekim/Desktop/DRL/outputs/pushcube_500k/sac_pushcube_nominal_500k/seed_0/20261006T121153_e8582334/tracking_summary.json'

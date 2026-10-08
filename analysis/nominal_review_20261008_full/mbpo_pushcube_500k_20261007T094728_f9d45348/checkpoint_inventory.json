@@ -1,0 +1,482 @@
+[
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/final.pt",
+    "keys": [
+      "schema_version",
+      "learner",
+      "counters",
+      "config",
+      "rng",
+      "replay_persisted",
+      "simulator_persisted",
+      "training_state",
+      "environment_contract",
+      "learner_probe",
+      "training_resume_supported",
+      "training_environment_contract",
+      "evaluation_environment_contract"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/final_model.pt",
+    "keys": [
+      "model",
+      "training_resume_supported",
+      "replay_persisted",
+      "simulator_persisted",
+      "initialization",
+      "counters"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/initial.pt",
+    "keys": [
+      "schema_version",
+      "learner",
+      "counters",
+      "config",
+      "rng",
+      "replay_persisted",
+      "simulator_persisted",
+      "training_state",
+      "environment_contract",
+      "learner_probe",
+      "training_resume_supported",
+      "training_environment_contract",
+      "evaluation_environment_contract"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/initial_model.pt",
+    "keys": [
+      "model",
+      "training_resume_supported",
+      "replay_persisted",
+      "simulator_persisted",
+      "initialization",
+      "counters"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/step_100000.pt",
+    "keys": [
+      "schema_version",
+      "learner",
+      "counters",
+      "config",
+      "rng",
+      "replay_persisted",
+      "simulator_persisted",
+      "training_state",
+      "environment_contract",
+      "learner_probe",
+      "training_resume_supported",
+      "training_environment_contract",
+      "evaluation_environment_contract"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/step_100000_model.pt",
+    "keys": [
+      "model",
+      "training_resume_supported",
+      "replay_persisted",
+      "simulator_persisted",
+      "initialization",
+      "counters"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/step_150016.pt",
+    "keys": [
+      "schema_version",
+      "learner",
+      "counters",
+      "config",
+      "rng",
+      "replay_persisted",
+      "simulator_persisted",
+      "training_state",
+      "environment_contract",
+      "learner_probe",
+      "training_resume_supported",
+      "training_environment_contract",
+      "evaluation_environment_contract"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/step_150016_model.pt",
+    "keys": [
+      "model",
+      "training_resume_supported",
+      "replay_persisted",
+      "simulator_persisted",
+      "initialization",
+      "counters"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/step_200000.pt",
+    "keys": [
+      "schema_version",
+      "learner",
+      "counters",
+      "config",
+      "rng",
+      "replay_persisted",
+      "simulator_persisted",
+      "training_state",
+      "environment_contract",
+      "learner_probe",
+      "training_resume_supported",
+      "training_environment_contract",
+      "evaluation_environment_contract"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/step_200000_model.pt",
+    "keys": [
+      "model",
+      "training_resume_supported",
+      "replay_persisted",
+      "simulator_persisted",
+      "initialization",
+      "counters"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/step_250016.pt",
+    "keys": [
+      "schema_version",
+      "learner",
+      "counters",
+      "config",
+      "rng",
+      "replay_persisted",
+      "simulator_persisted",
+      "training_state",
+      "environment_contract",
+      "learner_probe",
+      "training_resume_supported",
+      "training_environment_contract",
+      "evaluation_environment_contract"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/step_250016_model.pt",
+    "keys": [
+      "model",
+      "training_resume_supported",
+      "replay_persisted",
+      "simulator_persisted",
+      "initialization",
+      "counters"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/step_300000.pt",
+    "keys": [
+      "schema_version",
+      "learner",
+      "counters",
+      "config",
+      "rng",
+      "replay_persisted",
+      "simulator_persisted",
+      "training_state",
+      "environment_contract",
+      "learner_probe",
+      "training_resume_supported",
+      "training_environment_contract",
+      "evaluation_environment_contract"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/step_300000_model.pt",
+    "keys": [
+      "model",
+      "training_resume_supported",
+      "replay_persisted",
+      "simulator_persisted",
+      "initialization",
+      "counters"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/step_350016.pt",
+    "keys": [
+      "schema_version",
+      "learner",
+      "counters",
+      "config",
+      "rng",
+      "replay_persisted",
+      "simulator_persisted",
+      "training_state",
+      "environment_contract",
+      "learner_probe",
+      "training_resume_supported",
+      "training_environment_contract",
+      "evaluation_environment_contract"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/step_350016_model.pt",
+    "keys": [
+      "model",
+      "training_resume_supported",
+      "replay_persisted",
+      "simulator_persisted",
+      "initialization",
+      "counters"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/step_400000.pt",
+    "keys": [
+      "schema_version",
+      "learner",
+      "counters",
+      "config",
+      "rng",
+      "replay_persisted",
+      "simulator_persisted",
+      "training_state",
+      "environment_contract",
+      "learner_probe",
+      "training_resume_supported",
+      "training_environment_contract",
+      "evaluation_environment_contract"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/step_400000_model.pt",
+    "keys": [
+      "model",
+      "training_resume_supported",
+      "replay_persisted",
+      "simulator_persisted",
+      "initialization",
+      "counters"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/step_450016.pt",
+    "keys": [
+      "schema_version",
+      "learner",
+      "counters",
+      "config",
+      "rng",
+      "replay_persisted",
+      "simulator_persisted",
+      "training_state",
+      "environment_contract",
+      "learner_probe",
+      "training_resume_supported",
+      "training_environment_contract",
+      "evaluation_environment_contract"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/step_450016_model.pt",
+    "keys": [
+      "model",
+      "training_resume_supported",
+      "replay_persisted",
+      "simulator_persisted",
+      "initialization",
+      "counters"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/step_500000.pt",
+    "keys": [
+      "schema_version",
+      "learner",
+      "counters",
+      "config",
+      "rng",
+      "replay_persisted",
+      "simulator_persisted",
+      "training_state",
+      "environment_contract",
+      "learner_probe",
+      "training_resume_supported",
+      "training_environment_contract",
+      "evaluation_environment_contract"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/step_500000_model.pt",
+    "keys": [
+      "model",
+      "training_resume_supported",
+      "replay_persisted",
+      "simulator_persisted",
+      "initialization",
+      "counters"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/step_50016.pt",
+    "keys": [
+      "schema_version",
+      "learner",
+      "counters",
+      "config",
+      "rng",
+      "replay_persisted",
+      "simulator_persisted",
+      "training_state",
+      "environment_contract",
+      "learner_probe",
+      "training_resume_supported",
+      "training_environment_contract",
+      "evaluation_environment_contract"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "file": "/Users/jihyekim/Desktop/DRL/outputs/nominal_tasks/mbpo_pushcube_500k/mbpo_pushcube_full_500k/seed_0/20261007T094728_f9d45348/checkpoints/step_50016_model.pt",
+    "keys": [
+      "model",
+      "training_resume_supported",
+      "replay_persisted",
+      "simulator_persisted",
+      "initialization",
+      "counters"
+    ],
+    "replay_persisted": false,
+    "simulator_persisted": false
+  },
+  {
+    "probe_checkpoint": "final.pt",
+    "coverage": "one saved env observation; not historical rollout batch",
+    "normalized_abs_max": 9.570721587790434,
+    "p95": 4.622769872684934,
+    "argmax": 34
+  },
+  {
+    "probe_checkpoint": "initial.pt",
+    "coverage": "one saved env observation; not historical rollout batch",
+    "normalized_abs_max": 2.7065400793706385,
+    "p95": 1.7997873353693936,
+    "argmax": 8
+  },
+  {
+    "probe_checkpoint": "step_100000.pt",
+    "coverage": "one saved env observation; not historical rollout batch",
+    "normalized_abs_max": 10.787331078056354,
+    "p95": 3.7708903812931176,
+    "argmax": 34
+  },
+  {
+    "probe_checkpoint": "step_150016.pt",
+    "coverage": "one saved env observation; not historical rollout batch",
+    "normalized_abs_max": 4.104158478314354,
+    "p95": 2.526401476620506,
+    "argmax": 34
+  },
+  {
+    "probe_checkpoint": "step_200000.pt",
+    "coverage": "one saved env observation; not historical rollout batch",
+    "normalized_abs_max": 2.7065400793706385,
+    "p95": 1.8388971125392946,
+    "argmax": 8
+  },
+  {
+    "probe_checkpoint": "step_250016.pt",
+    "coverage": "one saved env observation; not historical rollout batch",
+    "normalized_abs_max": 2.951315288707889,
+    "p95": 1.8434940535813087,
+    "argmax": 28
+  },
+  {
+    "probe_checkpoint": "step_300000.pt",
+    "coverage": "one saved env observation; not historical rollout batch",
+    "normalized_abs_max": 4.418236612420685,
+    "p95": 2.38482341196354,
+    "argmax": 28
+  },
+  {
+    "probe_checkpoint": "step_350016.pt",
+    "coverage": "one saved env observation; not historical rollout batch",
+    "normalized_abs_max": 3.9961963257911517,
+    "p95": 1.9777871136128566,
+    "argmax": 28
+  },
+  {
+    "probe_checkpoint": "step_400000.pt",
+    "coverage": "one saved env observation; not historical rollout batch",
+    "normalized_abs_max": 2.7065400793706385,
+    "p95": 1.426038914026372,
+    "argmax": 8
+  },
+  {
+    "probe_checkpoint": "step_450016.pt",
+    "coverage": "one saved env observation; not historical rollout batch",
+    "normalized_abs_max": 2.9109340804976824,
+    "p95": 1.8407795592357312,
+    "argmax": 28
+  },
+  {
+    "probe_checkpoint": "step_500000.pt",
+    "coverage": "one saved env observation; not historical rollout batch",
+    "normalized_abs_max": 9.570721587790434,
+    "p95": 4.622769872684934,
+    "argmax": 34
+  },
+  {
+    "probe_checkpoint": "step_50016.pt",
+    "coverage": "one saved env observation; not historical rollout batch",
+    "normalized_abs_max": 2.258173646342688,
+    "p95": 1.7949766895205637,
+    "argmax": 28
+  }
+]

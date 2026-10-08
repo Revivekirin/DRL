@@ -91,10 +91,15 @@ def train_mbpo(config, settings, output_root='outputs'):
         od, ad = contract['observation_dim'], contract['action_dim']
         real = RealReplayBuffer(config.training.replay_capacity, od, ad, 0)
         synthetic = ModelReplayBuffer(settings.model_replay_capacity, od, ad, 1)
+        slot_generation = np.full(settings.model_replay_capacity, -1, dtype=np.int64)
+        slot_step = np.full(settings.model_replay_capacity, -1, dtype=np.int64)
+        if settings.transition_diagnostics:
+            (run/'diagnostic_batches').mkdir()
         provenance = ReplayProvenance(settings.model_replay_capacity)
         learner = SACLearner(od, action_space.low, action_space.high, config.algo, device)
         learner.record_update_diagnostics = True
         model = ProbabilisticEnsemble(od, ad, settings, device, 0, observation_layout=layout, preserve_start=True, observation_codec=codec)
+        metadata['model_observation_codec'] = model.observation_codec
         returns, lengths, successes = np.zeros(n), np.zeros(n, dtype=int), np.zeros(n, dtype=bool)
         budget = 0.0
         next_refit = config.training.learning_starts
@@ -196,8 +201,19 @@ def train_mbpo(config, settings, output_root='outputs'):
                     fitted = model.train(dataset)
                     errors = model_errors(model, dataset, layout)
                     diagnostics = StateDiagnostics(layout, codec)
+                    diagnostics.capture_extremes = settings.transition_diagnostics
                     before_size, before_position = len(synthetic), synthetic.position
                     generated = generate_maniskill_rollouts(learner, model, real, synthetic, settings, rng, diagnostics, contract)
+                    if settings.transition_diagnostics:
+                        np.savez_compressed(run/'diagnostic_batches'/f'generation_{model.refit_count}_extremes.npz',
+                            **diagnostics.extremes, real_env_steps=current, generation=model.refit_count)
+                    slots = (before_position + np.arange(generated)) % settings.model_replay_capacity
+                    slot_generation[slots] = model.refit_count
+                    slot_step[slots] = current
+                    if settings.transition_diagnostics:
+                        with (run/'metrics/normalizers.jsonl').open('a') as normalizers:
+                            normalizers.write(json.dumps(dict(refit=model.refit_count, real_env_steps=current,
+                                statistics={k:v.detach().cpu().tolist() for k,v in model.normalization.items()}))+'\n')
                     generation_record = provenance.append(model.refit_count, current, generated,
                         before_size=before_size, before_position=before_position,
                         after_size=len(synthetic), after_position=synthetic.position)
@@ -245,14 +261,33 @@ def train_mbpo(config, settings, output_root='outputs'):
                             raise RuntimeError('No synthetic sampling allowed before model fit')
                         sampled_diagnostics = (StateDiagnostics(layout, codec)
                             if updates == 0 and current // config.training.log_every != (current-n) // config.training.log_every else None)
+                        context = {} if settings.transition_diagnostics and sampled_diagnostics is not None else None
                         batch, nr, ns = mixed_batch(real, synthetic, config.training.batch_size, settings.real_ratio, rng,
-                                                   diagnostics=sampled_diagnostics)
+                                                   diagnostics=sampled_diagnostics, context=context)
                         if sampled_diagnostics is not None:
                             tracker.scalars('model_sampled_batch', {
                                 'selection': 'synthetic_subset_of_first_actual_update_at_log_interval',
                                 'policy_gradient_steps_before_update': learner.policy_gradient_steps,
                                 'synthetic_count': ns, 'stored_normalized_prediction': sampled_diagnostics.records}, current)
-                        losses = learner.update(batch)
+                        if context is None:
+                            losses = learner.update(batch)
+                        else:
+                            td = {}
+                            losses = learner.update(batch, diagnostics=td)
+                            mask = context['synthetic_mask']
+                            slots = context['synthetic_slot']
+                            context['generation'] = np.where(mask, slot_generation[np.maximum(slots, 0)], -1)
+                            context['generation_real_step'] = np.where(mask, slot_step[np.maximum(slots, 0)], -1)
+                            arrays = {k:v.detach().cpu().numpy() for k,v in td.items()}
+                            np.savez_compressed(run/'diagnostic_batches'/f'update_{learner.policy_gradient_steps}.npz',
+                                **vars(batch), **{k:v for k,v in arrays.items() if k != 'reward'}, **context,
+                                real_env_steps=current, policy_gradient_steps=learner.policy_gradient_steps)
+                            for source, selected in [('real', ~mask), ('synthetic', mask)]:
+                                for key, value in arrays.items():
+                                    values = value[selected]
+                                    losses[f'diagnostic/{source}/{key}_min'] = float(values.min())
+                                    losses[f'diagnostic/{source}/{key}_max'] = float(values.max())
+                                    losses[f'diagnostic/{source}/{key}_abs_p99'] = float(np.quantile(np.abs(values), .99))
                         if not all(np.isfinite(v) for v in losses.values()):
                             raise FloatingPointError('Nonfinite learner diagnostics')
                         counters['real_policy_samples'] += nr

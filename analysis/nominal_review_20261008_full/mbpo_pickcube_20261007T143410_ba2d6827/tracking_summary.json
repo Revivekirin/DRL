@@ -1,0 +1,8 @@
+{
+  "mode": "online",
+  "tracking_errors": 0,
+  "training_failed": false,
+  "events": 265257,
+  "status": "local_recording_complete",
+  "cloud_sync": "not_verified; use wandb sync for offline runs"
+}

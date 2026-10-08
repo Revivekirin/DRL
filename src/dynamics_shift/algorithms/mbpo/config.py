@@ -24,8 +24,14 @@ class MBPOConfig:
     rollout_batch_size: int = 100000
     model_replay_capacity: int = 400000
     real_ratio: float = 0.05
+    binary_features: str = 'legacy_gaussian_delta'
+    transition_diagnostics: bool = False
 
     def __post_init__(self) -> None:
+        if self.binary_features not in ('legacy_gaussian_delta', 'bernoulli_next_v1'):
+            raise ValueError('Unsupported binary_features representation')
+        if type(self.transition_diagnostics) is not bool:
+            raise ValueError('transition_diagnostics must be boolean')
         object.__setattr__(self, "model_hidden_dims", tuple(self.model_hidden_dims))
         for name in ("ensemble_size", "elite_size", "model_batch_size", "model_train_frequency",
                      "model_max_epochs", "model_patience", "model_max_samples", "rollout_horizon",

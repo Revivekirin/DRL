@@ -45,16 +45,20 @@ class SACLearner:
 
     @torch.no_grad()
     def bellman_target(self, reward: torch.Tensor, next_obs: torch.Tensor,
-                       terminated: torch.Tensor) -> torch.Tensor:
+                       terminated: torch.Tensor, *, diagnostics=None) -> torch.Tensor:
         """TimeLimit truncation still bootstraps from the stored final observation."""
         action, log_prob = self.actor.sample(next_obs)
         q1, q2 = self.target_critic(next_obs, action)
+        if diagnostics is not None:
+            diagnostics.update(target_q_min=torch.minimum(q1, q2).detach(),
+                               entropy_term=(-self.alpha * log_prob).detach(),
+                               bootstrap_multiplier=(self.config.gamma*(1.0-terminated)).detach())
         return reward + self.config.gamma * (1.0 - terminated) * (
             torch.minimum(q1, q2)
             - self.alpha * log_prob
         )
 
-    def update(self, batch: TransitionBatch) -> dict[str, float]:
+    def update(self, batch: TransitionBatch, *, diagnostics=None) -> dict[str, float]:
         tensors = {name: torch.as_tensor(np.asarray(value), dtype=torch.float32, device=self.device)
                    for name, value in vars(batch).items()}
         n = tensors["obs"].shape[0]
@@ -66,8 +70,14 @@ class SACLearner:
         if any(not torch.all((tensors[k] == 0) | (tensors[k] == 1)) for k in ("terminated", "truncated")):
             raise ValueError("Terminal flags must be binary")
         obs, action = tensors["obs"], tensors["action"]
-        target = self.bellman_target(tensors["reward"], tensors["next_obs"], tensors["terminated"])
+        if diagnostics is None:
+            target = self.bellman_target(tensors["reward"], tensors["next_obs"], tensors["terminated"])
+        else:
+            target = self.bellman_target(tensors["reward"], tensors["next_obs"], tensors["terminated"], diagnostics=diagnostics)
         q1, q2 = self.critic(obs, action)
+        if diagnostics is not None:
+            diagnostics.update(td_target=target.detach(), td_error_q1=(q1-target).detach(),
+                               td_error_q2=(q2-target).detach(), reward=tensors['reward'].detach())
         critic_loss = F.mse_loss(q1, target) + F.mse_loss(q2, target)
         self.critic_optimizer.zero_grad(set_to_none=True)
         critic_loss.backward()

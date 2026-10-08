@@ -1,0 +1,22 @@
+{
+  "source_sha": "98867e9e8b274f1c5dec6246976fe8560b766adb",
+  "dirty": true,
+  "static_ast": "PASS",
+  "runtime_tests": "NOT_RUN",
+  "phase_c": "SERVER_EXECUTION_PENDING",
+  "phase_d": "NOT_STARTED",
+  "source_files": {
+    "src/dynamics_shift/algorithms/mbpo/config.py": "206cf58d613a570c5fed7cb2be5747f95c0b4c4233c8aae8bb4eac2d6965fdb9",
+    "src/dynamics_shift/algorithms/mbpo/maniskill.py": "8b6b7eede27c780edd736fb1b3343c9771161c36b139fe0f8a95f3f062420c9f",
+    "src/dynamics_shift/algorithms/mbpo/rollouts.py": "dfb1d474bcbf245f6e43c91d53f32701db7f450807a8c04c2c385c02e33a22d3",
+    "src/dynamics_shift/algorithms/sac/learner.py": "c4f26a19b462310d8c1aa97ebf4ef776262f8af40379a581328d65451d64f176",
+    "src/dynamics_shift/experiments/dispatch.py": "3d1dcfd2af7975365f79376a9b595dcf2f36fcd5a4d533a015841a56507c68ab",
+    "src/dynamics_shift/experiments/mbpo_maniskill.py": "20a563cc53f37240f06a1a683a9b80b852a888e39375ff8a72fb5027cb9544a2",
+    "src/dynamics_shift/experiments/provenance.py": "c84bc77bbc3b1f4d3f9acfc712b28bc26136a7a39785ac7e6d76066c4ea6b6fa",
+    "src/dynamics_shift/models/probabilistic_ensemble.py": "c47388ec4f21c1b8902067ecef372963fc75b51363d3dcf448149a1bffa16ee4",
+    "src/dynamics_shift/utils/tracking_audit.py": "ff1efb557f02b63b3e8054da96b375fa535973e99a16b316b86c62c12825e674",
+    "scripts/diagnose_dynamics.py": "4d8cc80e8fa67ade8afcacc0e42f723ff8654c32c296be9df71caa55b01e1cbf",
+    "src/dynamics_shift/models/binary.py": "78e96409b2095c706f3481e1b7a4727416c6ca9b1215fbebcbdf320d4990f862",
+    "tests/test_binary_dynamics.py": "b5e00af6a144afd746a76ab02928a80e85c5c3726a76d629f6a2ca4da4d8bbe4"
+  }
+}

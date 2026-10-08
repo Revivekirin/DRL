@@ -1,4 +1,4 @@
-"""Bootstrapped Gaussian ensemble predicting [observation delta, reward]."""
+"""Delta/reward ensemble with opt-in Bernoulli next-state boolean coordinates."""
 from copy import deepcopy
 from dataclasses import asdict
 import numpy as np
@@ -48,10 +48,20 @@ class ProbabilisticEnsemble:
             if (observation_codec.get('version') != 'maniskill_state_v1'
                     or observation_codec.get('target') != 'aligned_quaternion_delta_v1'
                     or observation_codec.get('invariant_policy') != 'learned_delta_with_drift_diagnostic'
-                    or observation_codec.get('boolean_policy') != 'continuous_prediction_without_thresholding'
+                    or observation_codec.get('boolean_policy') not in ('continuous_prediction_without_thresholding', 'bernoulli_next_v1')
                     or observation_codec.get('reward_policy') != 'learned_gaussian_without_clipping'
                     or observation_codec['layout'] != observation_layout):
                 raise ValueError('Unsupported or inconsistent observation/model codec')
+        self.binary = None
+        if config.binary_features == 'bernoulli_next_v1':
+            from dynamics_shift.models.binary import BinaryNext
+            if observation_codec is None:
+                raise ValueError('Bernoulli features require an explicit observation codec')
+            self.binary = BinaryNext(observation_codec)
+            self.observation_codec = deepcopy(observation_codec)
+            self.observation_codec['boolean_policy'] = 'bernoulli_next_v1'
+        elif observation_codec and observation_codec.get('boolean_policy') == 'bernoulli_next_v1':
+            raise ValueError('Binary codec and model config disagree')
         poses = observation_codec['quaternion_poses'] if observation_codec is not None else None
         self.geometry = QuaternionDelta(observation_layout, poses) if observation_layout else None
         self.preserve_start = preserve_start
@@ -79,10 +89,34 @@ class ProbabilisticEnsemble:
         return x, y
 
     def prepare_dataset(self, dataset):
-        return self.geometry.dataset(dataset, self.obs_dim) if self.geometry else dataset
+        prepared = self.geometry.dataset(dataset, self.obs_dim) if self.geometry else dataset
+        return self.binary.dataset(prepared) if self.binary else prepared
 
     def reconstruct(self, obs, delta, normalize=True):
-        return self.geometry.reconstruct(obs, delta, normalize) if self.geometry else obs + delta
+        result = self.geometry.reconstruct(obs, delta, normalize) if self.geometry else obs + delta
+        return self.binary.restore(result, delta, normalize) if self.binary else result
+
+    def likelihood(self, mean, logvar, target):
+        if not self.binary:
+            return gaussian_loss(mean, logvar, target)
+        terms = .5 * ((mean - target).square() * (-logvar).exp() + logvar)
+        ids = self.binary.indices
+        # One Bernoulli NLL replaces one Gaussian NLL, same coordinate average.
+        terms = terms.clone()
+        terms[:, ids] = F.binary_cross_entropy_with_logits(mean[:, ids], target[:, ids], reduction='none')
+        return terms.mean()
+
+    def physical_mean(self, mean):
+        result = mean * self.normalization['target_std'] + self.normalization['target_mean']
+        if self.binary:
+            result = result.clone()
+            result[..., self.binary.indices] = mean[..., self.binary.indices].sigmoid()
+        return result
+
+    def sample_predictions(self, means, variances, rng):
+        noise = rng.standard_normal(means.shape)
+        predictions = means + np.sqrt(variances) * noise
+        return self.binary.sample(predictions, means, noise) if self.binary else predictions
 
     def train(self, dataset: ModelDataset) -> dict:
         if not isinstance(dataset, ModelDataset):
@@ -100,12 +134,16 @@ class ProbabilisticEnsemble:
             for prefix, data in (("input", dataset.inputs[ti]), ("target", dataset.targets[ti])):
                 self.normalization[prefix + "_mean"] = self._tensor(data.mean(0))
                 self.normalization[prefix + "_std"] = self._tensor(np.maximum(data.std(0), 1e-6))
+            if self.binary:
+                for prefix in ('input', 'target'):
+                    self.normalization[prefix + '_mean'][self.binary.indices] = 0.
+                    self.normalization[prefix + '_std'][self.binary.indices] = 1.
         x, y = self._normalized(dataset.inputs, dataset.targets)
         starting_nll, kept_start = [], []
         for member, optimizer in zip(self.members, self.optimizers):
             member.eval()
             with torch.no_grad():
-                start_loss = float(gaussian_loss(*member(x[vi]), y[vi]))
+                start_loss = float(self.likelihood(*member(x[vi]), y[vi]))
             if not np.isfinite(start_loss):
                 raise FloatingPointError("Nonfinite initial validation NLL")
             starting_nll.append(start_loss)
@@ -120,7 +158,7 @@ class ProbabilisticEnsemble:
                 for indices in np.array_split(self.rng.permutation(bootstrap),
                                               max(1, int(np.ceil(len(ti) / self.config.model_batch_size)))):
                     ids = torch.as_tensor(indices, device=self.device)
-                    loss = gaussian_loss(*member(x[ids]), y[ids])
+                    loss = self.likelihood(*member(x[ids]), y[ids])
                     if not torch.isfinite(loss):
                         raise FloatingPointError("Nonfinite dynamics loss")
                     optimizer.zero_grad(set_to_none=True)
@@ -131,7 +169,7 @@ class ProbabilisticEnsemble:
                 member.eval()
                 with torch.no_grad():
                     ids = torch.as_tensor(vi, device=self.device)
-                    val = float(gaussian_loss(*member(x[ids]), y[ids]))
+                    val = float(self.likelihood(*member(x[ids]), y[ids]))
                 if not np.isfinite(val):
                     raise FloatingPointError("Nonfinite dynamics validation loss")
                 if val < best_loss:
@@ -158,6 +196,8 @@ class ProbabilisticEnsemble:
 
     @torch.no_grad()
     def predict(self, inputs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        if self.binary:
+            self.binary.check(inputs[:, self.binary.indices])
         if self.geometry:
             inputs = inputs.copy()
             inputs[:, :self.obs_dim] = self.geometry.canonical(inputs[:, :self.obs_dim])
@@ -166,8 +206,12 @@ class ProbabilisticEnsemble:
         for member in self.members:
             member.eval()
             mean, logvar = member(x)
-            means.append(mean * self.normalization["target_std"] + self.normalization["target_mean"])
-            variances.append(logvar.exp() * self.normalization["target_std"].square())
+            physical = self.physical_mean(mean)
+            variance = logvar.exp() * self.normalization["target_std"].square()
+            if self.binary:
+                variance[..., self.binary.indices] = physical[..., self.binary.indices] * (1 - physical[..., self.binary.indices])
+            means.append(physical)
+            variances.append(variance)
         return torch.stack(means).cpu().numpy(), torch.stack(variances).cpu().numpy()
 
     @torch.no_grad()
@@ -180,8 +224,10 @@ class ProbabilisticEnsemble:
                 stop = start + self.config.model_batch_size
                 mean, logvar = member(x[start:stop])
                 count = len(mean)
-                nll_sum += float(gaussian_loss(mean, logvar, y[start:stop])) * count
-                mse_sum += float(((mean - y[start:stop]) * self.normalization["target_std"]).square().mean()) * count
+                nll_sum += float(self.likelihood(mean, logvar, y[start:stop])) * count
+                error = (self.physical_mean(mean) - self._tensor(targets[start:stop]) if self.binary else
+                         (mean - y[start:stop]) * self.normalization['target_std'])
+                mse_sum += float(error.square().mean()) * count
             losses.append(nll_sum / len(x))
             errors.append(float(np.sqrt(mse_sum / len(x))))
         return {"member_nll": losses, "member_rmse": errors}
@@ -217,6 +263,11 @@ class ProbabilisticEnsemble:
             optimizer.load_state_dict(saved)
         model.normalization = None if state["normalization"] is None else {
             k: v.to(model.device) for k, v in state["normalization"].items()}
+        if model.binary and model.normalization is not None:
+            for prefix in ('input', 'target'):
+                if (not torch.all(model.normalization[prefix+'_mean'][model.binary.indices] == 0)
+                    or not torch.all(model.normalization[prefix+'_std'][model.binary.indices] == 1)):
+                    raise ValueError('Bernoulli checkpoint normalization must use mean=0, std=1')
         model.elites = list(state["elites"])
         model.rng.bit_generator.state = state["rng"]
         model.train_steps, model.refit_count = state["train_steps"], state["refit_count"]

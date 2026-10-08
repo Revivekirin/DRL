@@ -54,6 +54,8 @@ class StateDiagnostics:
             values = next_obs[:, start:stop]
             record[key + '_outside_0_1_fraction'] = float(np.mean((values < 0) | (values > 1)))
             record[key + '_distance_to_boolean_mean'] = float(np.minimum(np.abs(values), np.abs(values-1)).mean())
+            record[key + '_range_violation_max'] = float(np.maximum(np.maximum(-values, values-1), 0).max())
+            record[key + '_distance_to_boolean_max'] = float(np.minimum(np.abs(values), np.abs(values-1)).max())
         for vector, destination, source in self.codec.get('relations', []):
             start, stop = self.layout[vector]
             d, _ = self.layout[destination]
@@ -77,6 +79,7 @@ def model_errors(model, dataset, layout=None):
     """
     if hasattr(model, "prepare_dataset"):
         dataset = model.prepare_dataset(dataset)
+    binary_ids = model.binary.indices if getattr(model, 'binary', None) else []
     partitions = {}
     blocks = dict(layout or {})
     for key in (getattr(model, 'observation_codec', None) or {}).get('quaternion_poses', ('extra.tcp_pose', 'extra.obj_pose')):
@@ -113,7 +116,7 @@ def model_errors(model, dataset, layout=None):
         for key, (start, stop) in blocks.items():
             partitions[name]['state_blocks'][key] = {
                 'member_rmse': np.sqrt(np.mean(errors[:, :, start:stop] ** 2, axis=(1, 2))).tolist(),
-                'zero_delta_baseline_rmse': float(np.sqrt(np.mean(targets[:, start:stop] ** 2))),
+                'zero_delta_baseline_rmse': float(np.sqrt(np.mean((targets[:, start:stop] - dataset.inputs[ids, start:stop] if start in binary_ids and stop == start+1 else targets[:, start:stop]) ** 2))),
             }
     validity = {}
     if getattr(model, 'geometry', None):
@@ -124,7 +127,7 @@ def model_errors(model, dataset, layout=None):
         current = dataset.inputs[ids, :model.obs_dim]
         truth = current + dataset.targets[ids, :model.obs_dim]
         for label, predictions in [('conditional_mean', means),
-                                   ('sampled_prediction', means + np.sqrt(variances) * noise)]:
+                                   ('sampled_prediction', model.sample_predictions(means, variances, np.random.default_rng(0)) if hasattr(model, 'sample_predictions') else means + np.sqrt(variances) * noise)]:
             validity[label] = []
             for member in range(len(predictions)):
                 raw = model.reconstruct(current, predictions[member, :, :model.obs_dim], normalize=False)
@@ -138,7 +141,8 @@ def model_errors(model, dataset, layout=None):
             'prediction_errors': partitions,
             'error_semantics': {'array_axis': 'ensemble member index, not elite rank or state coordinate',
                 'prediction': 'conditional mean in original coordinates; no Gaussian sampling',
-                'state_target': ('aligned quaternion delta chart; other coordinates next minus current'
+                'binary_target': 'absolute next-state Bernoulli probability' if binary_ids else 'legacy continuous delta',
+                'state_target': ('aligned quaternion delta chart; other nonbinary coordinates next minus current'
                                  if getattr(model, 'geometry', None) else
                                  'next observation minus current observation'),
                 'holdout': 'current refit real snapshot partition; may have appeared in earlier training',

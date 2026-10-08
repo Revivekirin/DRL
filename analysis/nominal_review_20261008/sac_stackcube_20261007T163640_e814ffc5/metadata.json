@@ -1,0 +1,785 @@
+{
+  "status": "complete",
+  "algorithm": "sac",
+  "seed": 0,
+  "backend": "maniskill",
+  "device": "cuda:0",
+  "sim_backend": "gpu",
+  "num_envs": 32,
+  "utd": 0.5,
+  "gpu_name": "NVIDIA GeForce RTX 3090",
+  "cuda_build": "12.1",
+  "replay_persisted": false,
+  "simulator_persisted": false,
+  "training_resume_supported": false,
+  "versions": {
+    "mani-skill": "3.0.1",
+    "sapien": "3.0.3",
+    "torch": "2.5.1+cu121",
+    "numpy": "2.5.3",
+    "gymnasium": "1.3.0"
+  },
+  "environment_contract": {
+    "observation_codec": {
+      "version": "maniskill_state_v1",
+      "layout": {
+        "agent.qpos": [
+          0,
+          9
+        ],
+        "agent.qvel": [
+          9,
+          18
+        ],
+        "extra.tcp_pose": [
+          18,
+          25
+        ],
+        "extra.cubeA_pose": [
+          25,
+          32
+        ],
+        "extra.cubeB_pose": [
+          32,
+          39
+        ],
+        "extra.tcp_to_cubeA_pos": [
+          39,
+          42
+        ],
+        "extra.tcp_to_cubeB_pos": [
+          42,
+          45
+        ],
+        "extra.cubeA_to_cubeB_pos": [
+          45,
+          48
+        ]
+      },
+      "quaternion_poses": [
+        "extra.tcp_pose",
+        "extra.cubeA_pose",
+        "extra.cubeB_pose"
+      ],
+      "invariant_fields": [],
+      "boolean_fields": [],
+      "relations": [
+        [
+          "extra.tcp_to_cubeA_pos",
+          "extra.cubeA_pose",
+          "extra.tcp_pose"
+        ],
+        [
+          "extra.tcp_to_cubeB_pos",
+          "extra.cubeB_pose",
+          "extra.tcp_pose"
+        ],
+        [
+          "extra.cubeA_to_cubeB_pos",
+          "extra.cubeB_pose",
+          "extra.cubeA_pose"
+        ]
+      ],
+      "target": "aligned_quaternion_delta_v1",
+      "invariant_policy": "learned_delta_with_drift_diagnostic",
+      "boolean_policy": "continuous_prediction_without_thresholding",
+      "reward_policy": "learned_gaussian_without_clipping"
+    },
+    "underlying_termination": "success_only",
+    "supported_dynamics_shifts": [],
+    "env_id": "StackCube-v1",
+    "backend": "maniskill",
+    "observation_dim": 48,
+    "action_dim": 4,
+    "observation_dtype": "float32",
+    "action_dtype": "float32",
+    "action_low": [
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0
+    ],
+    "action_high": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "obs_mode": "state",
+    "robot_uids": "panda",
+    "control_mode": "pd_ee_delta_pos",
+    "reward_mode": "normalized_dense",
+    "sim_backend": "gpu",
+    "num_envs": 32,
+    "horizon": 50,
+    "termination_policy": "ignore_terminations",
+    "truncation_policy": "bootstrap_from_final_observation",
+    "automatic_reset": true
+  },
+  "training_environment_contract": {
+    "observation_codec": {
+      "version": "maniskill_state_v1",
+      "layout": {
+        "agent.qpos": [
+          0,
+          9
+        ],
+        "agent.qvel": [
+          9,
+          18
+        ],
+        "extra.tcp_pose": [
+          18,
+          25
+        ],
+        "extra.cubeA_pose": [
+          25,
+          32
+        ],
+        "extra.cubeB_pose": [
+          32,
+          39
+        ],
+        "extra.tcp_to_cubeA_pos": [
+          39,
+          42
+        ],
+        "extra.tcp_to_cubeB_pos": [
+          42,
+          45
+        ],
+        "extra.cubeA_to_cubeB_pos": [
+          45,
+          48
+        ]
+      },
+      "quaternion_poses": [
+        "extra.tcp_pose",
+        "extra.cubeA_pose",
+        "extra.cubeB_pose"
+      ],
+      "invariant_fields": [],
+      "boolean_fields": [],
+      "relations": [
+        [
+          "extra.tcp_to_cubeA_pos",
+          "extra.cubeA_pose",
+          "extra.tcp_pose"
+        ],
+        [
+          "extra.tcp_to_cubeB_pos",
+          "extra.cubeB_pose",
+          "extra.tcp_pose"
+        ],
+        [
+          "extra.cubeA_to_cubeB_pos",
+          "extra.cubeB_pose",
+          "extra.cubeA_pose"
+        ]
+      ],
+      "target": "aligned_quaternion_delta_v1",
+      "invariant_policy": "learned_delta_with_drift_diagnostic",
+      "boolean_policy": "continuous_prediction_without_thresholding",
+      "reward_policy": "learned_gaussian_without_clipping"
+    },
+    "underlying_termination": "success_only",
+    "supported_dynamics_shifts": [],
+    "env_id": "StackCube-v1",
+    "backend": "maniskill",
+    "observation_dim": 48,
+    "action_dim": 4,
+    "observation_dtype": "float32",
+    "action_dtype": "float32",
+    "action_low": [
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0
+    ],
+    "action_high": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "obs_mode": "state",
+    "robot_uids": "panda",
+    "control_mode": "pd_ee_delta_pos",
+    "reward_mode": "normalized_dense",
+    "sim_backend": "gpu",
+    "num_envs": 32,
+    "horizon": 50,
+    "termination_policy": "ignore_terminations",
+    "truncation_policy": "bootstrap_from_final_observation",
+    "automatic_reset": true
+  },
+  "evaluation_environment_contract": {
+    "observation_codec": {
+      "version": "maniskill_state_v1",
+      "layout": {
+        "agent.qpos": [
+          0,
+          9
+        ],
+        "agent.qvel": [
+          9,
+          18
+        ],
+        "extra.tcp_pose": [
+          18,
+          25
+        ],
+        "extra.cubeA_pose": [
+          25,
+          32
+        ],
+        "extra.cubeB_pose": [
+          32,
+          39
+        ],
+        "extra.tcp_to_cubeA_pos": [
+          39,
+          42
+        ],
+        "extra.tcp_to_cubeB_pos": [
+          42,
+          45
+        ],
+        "extra.cubeA_to_cubeB_pos": [
+          45,
+          48
+        ]
+      },
+      "quaternion_poses": [
+        "extra.tcp_pose",
+        "extra.cubeA_pose",
+        "extra.cubeB_pose"
+      ],
+      "invariant_fields": [],
+      "boolean_fields": [],
+      "relations": [
+        [
+          "extra.tcp_to_cubeA_pos",
+          "extra.cubeA_pose",
+          "extra.tcp_pose"
+        ],
+        [
+          "extra.tcp_to_cubeB_pos",
+          "extra.cubeB_pose",
+          "extra.tcp_pose"
+        ],
+        [
+          "extra.cubeA_to_cubeB_pos",
+          "extra.cubeB_pose",
+          "extra.cubeA_pose"
+        ]
+      ],
+      "target": "aligned_quaternion_delta_v1",
+      "invariant_policy": "learned_delta_with_drift_diagnostic",
+      "boolean_policy": "continuous_prediction_without_thresholding",
+      "reward_policy": "learned_gaussian_without_clipping"
+    },
+    "underlying_termination": "success_only",
+    "supported_dynamics_shifts": [],
+    "env_id": "StackCube-v1",
+    "backend": "maniskill",
+    "observation_dim": 48,
+    "action_dim": 4,
+    "observation_dtype": "float32",
+    "action_dtype": "float32",
+    "action_low": [
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0
+    ],
+    "action_high": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "obs_mode": "state",
+    "robot_uids": "panda",
+    "control_mode": "pd_ee_delta_pos",
+    "reward_mode": "normalized_dense",
+    "sim_backend": "cpu",
+    "num_envs": 1,
+    "horizon": 50,
+    "termination_policy": "terminate_on_success",
+    "truncation_policy": "bootstrap_from_final_observation",
+    "automatic_reset": false
+  },
+  "git_commit": "bdee72d33dc34d7b392d591d6d092f60b1a04e41",
+  "git_dirty": true,
+  "partial_episodes": {
+    "num_envs": 32,
+    "lengths": [
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25,
+      25
+    ],
+    "returns": [
+      16.603499576449394,
+      15.850880146026611,
+      15.807962238788605,
+      15.636194631457329,
+      16.313739582896233,
+      15.649098232388496,
+      16.56941993534565,
+      16.43923580646515,
+      17.095522835850716,
+      13.529445931315422,
+      16.300474643707275,
+      15.116754457354546,
+      16.11222967505455,
+      16.320687860250473,
+      8.368701115250587,
+      15.654474392533302,
+      13.97841988503933,
+      16.32917456328869,
+      13.434131175279617,
+      16.144525051116943,
+      16.93802337348461,
+      15.487693473696709,
+      17.200361862778664,
+      16.66853740811348,
+      15.991929456591606,
+      14.91651514172554,
+      13.765610024333,
+      15.967734694480896,
+      16.194276303052902,
+      15.600542604923248,
+      13.679744720458984,
+      15.170629158616066
+    ],
+    "success_once": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "evaluation": {
+    "environment_contract": {
+      "observation_codec": {
+        "version": "maniskill_state_v1",
+        "layout": {
+          "agent.qpos": [
+            0,
+            9
+          ],
+          "agent.qvel": [
+            9,
+            18
+          ],
+          "extra.tcp_pose": [
+            18,
+            25
+          ],
+          "extra.cubeA_pose": [
+            25,
+            32
+          ],
+          "extra.cubeB_pose": [
+            32,
+            39
+          ],
+          "extra.tcp_to_cubeA_pos": [
+            39,
+            42
+          ],
+          "extra.tcp_to_cubeB_pos": [
+            42,
+            45
+          ],
+          "extra.cubeA_to_cubeB_pos": [
+            45,
+            48
+          ]
+        },
+        "quaternion_poses": [
+          "extra.tcp_pose",
+          "extra.cubeA_pose",
+          "extra.cubeB_pose"
+        ],
+        "invariant_fields": [],
+        "boolean_fields": [],
+        "relations": [
+          [
+            "extra.tcp_to_cubeA_pos",
+            "extra.cubeA_pose",
+            "extra.tcp_pose"
+          ],
+          [
+            "extra.tcp_to_cubeB_pos",
+            "extra.cubeB_pose",
+            "extra.tcp_pose"
+          ],
+          [
+            "extra.cubeA_to_cubeB_pos",
+            "extra.cubeB_pose",
+            "extra.cubeA_pose"
+          ]
+        ],
+        "target": "aligned_quaternion_delta_v1",
+        "invariant_policy": "learned_delta_with_drift_diagnostic",
+        "boolean_policy": "continuous_prediction_without_thresholding",
+        "reward_policy": "learned_gaussian_without_clipping"
+      },
+      "underlying_termination": "success_only",
+      "supported_dynamics_shifts": [],
+      "env_id": "StackCube-v1",
+      "backend": "maniskill",
+      "observation_dim": 48,
+      "action_dim": 4,
+      "observation_dtype": "float32",
+      "action_dtype": "float32",
+      "action_low": [
+        -1.0,
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "action_high": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "obs_mode": "state",
+      "robot_uids": "panda",
+      "control_mode": "pd_ee_delta_pos",
+      "reward_mode": "normalized_dense",
+      "sim_backend": "cpu",
+      "num_envs": 1,
+      "horizon": 50,
+      "termination_policy": "terminate_on_success",
+      "truncation_policy": "bootstrap_from_final_observation",
+      "automatic_reset": false
+    },
+    "evaluation_environment_contract": {
+      "observation_codec": {
+        "version": "maniskill_state_v1",
+        "layout": {
+          "agent.qpos": [
+            0,
+            9
+          ],
+          "agent.qvel": [
+            9,
+            18
+          ],
+          "extra.tcp_pose": [
+            18,
+            25
+          ],
+          "extra.cubeA_pose": [
+            25,
+            32
+          ],
+          "extra.cubeB_pose": [
+            32,
+            39
+          ],
+          "extra.tcp_to_cubeA_pos": [
+            39,
+            42
+          ],
+          "extra.tcp_to_cubeB_pos": [
+            42,
+            45
+          ],
+          "extra.cubeA_to_cubeB_pos": [
+            45,
+            48
+          ]
+        },
+        "quaternion_poses": [
+          "extra.tcp_pose",
+          "extra.cubeA_pose",
+          "extra.cubeB_pose"
+        ],
+        "invariant_fields": [],
+        "boolean_fields": [],
+        "relations": [
+          [
+            "extra.tcp_to_cubeA_pos",
+            "extra.cubeA_pose",
+            "extra.tcp_pose"
+          ],
+          [
+            "extra.tcp_to_cubeB_pos",
+            "extra.cubeB_pose",
+            "extra.tcp_pose"
+          ],
+          [
+            "extra.cubeA_to_cubeB_pos",
+            "extra.cubeB_pose",
+            "extra.cubeA_pose"
+          ]
+        ],
+        "target": "aligned_quaternion_delta_v1",
+        "invariant_policy": "learned_delta_with_drift_diagnostic",
+        "boolean_policy": "continuous_prediction_without_thresholding",
+        "reward_policy": "learned_gaussian_without_clipping"
+      },
+      "underlying_termination": "success_only",
+      "supported_dynamics_shifts": [],
+      "env_id": "StackCube-v1",
+      "backend": "maniskill",
+      "observation_dim": 48,
+      "action_dim": 4,
+      "observation_dtype": "float32",
+      "action_dtype": "float32",
+      "action_low": [
+        -1.0,
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "action_high": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "obs_mode": "state",
+      "robot_uids": "panda",
+      "control_mode": "pd_ee_delta_pos",
+      "reward_mode": "normalized_dense",
+      "sim_backend": "cpu",
+      "num_envs": 1,
+      "horizon": 50,
+      "termination_policy": "terminate_on_success",
+      "truncation_policy": "bootstrap_from_final_observation",
+      "automatic_reset": false
+    },
+    "recorded_training_environment_contract": {
+      "observation_codec": {
+        "version": "maniskill_state_v1",
+        "layout": {
+          "agent.qpos": [
+            0,
+            9
+          ],
+          "agent.qvel": [
+            9,
+            18
+          ],
+          "extra.tcp_pose": [
+            18,
+            25
+          ],
+          "extra.cubeA_pose": [
+            25,
+            32
+          ],
+          "extra.cubeB_pose": [
+            32,
+            39
+          ],
+          "extra.tcp_to_cubeA_pos": [
+            39,
+            42
+          ],
+          "extra.tcp_to_cubeB_pos": [
+            42,
+            45
+          ],
+          "extra.cubeA_to_cubeB_pos": [
+            45,
+            48
+          ]
+        },
+        "quaternion_poses": [
+          "extra.tcp_pose",
+          "extra.cubeA_pose",
+          "extra.cubeB_pose"
+        ],
+        "invariant_fields": [],
+        "boolean_fields": [],
+        "relations": [
+          [
+            "extra.tcp_to_cubeA_pos",
+            "extra.cubeA_pose",
+            "extra.tcp_pose"
+          ],
+          [
+            "extra.tcp_to_cubeB_pos",
+            "extra.cubeB_pose",
+            "extra.tcp_pose"
+          ],
+          [
+            "extra.cubeA_to_cubeB_pos",
+            "extra.cubeB_pose",
+            "extra.cubeA_pose"
+          ]
+        ],
+        "target": "aligned_quaternion_delta_v1",
+        "invariant_policy": "learned_delta_with_drift_diagnostic",
+        "boolean_policy": "continuous_prediction_without_thresholding",
+        "reward_policy": "learned_gaussian_without_clipping"
+      },
+      "underlying_termination": "success_only",
+      "supported_dynamics_shifts": [],
+      "env_id": "StackCube-v1",
+      "backend": "maniskill",
+      "observation_dim": 48,
+      "action_dim": 4,
+      "observation_dtype": "float32",
+      "action_dtype": "float32",
+      "action_low": [
+        -1.0,
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "action_high": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "obs_mode": "state",
+      "robot_uids": "panda",
+      "control_mode": "pd_ee_delta_pos",
+      "reward_mode": "normalized_dense",
+      "sim_backend": "gpu",
+      "num_envs": 32,
+      "horizon": 50,
+      "termination_policy": "ignore_terminations",
+      "truncation_policy": "bootstrap_from_final_observation",
+      "automatic_reset": true
+    },
+    "evaluation_overrides": {
+      "sim_backend": "cpu",
+      "num_envs": 1
+    },
+    "operational_differences": {
+      "automatic_reset": {
+        "recorded_training": true,
+        "evaluation": false
+      },
+      "num_envs": {
+        "recorded_training": 32,
+        "evaluation": 1
+      },
+      "sim_backend": {
+        "recorded_training": "gpu",
+        "evaluation": "cpu"
+      },
+      "termination_policy": {
+        "recorded_training": "ignore_terminations",
+        "evaluation": "terminate_on_success"
+      }
+    },
+    "unverified": [],
+    "episodes": 20,
+    "mean_return": 29.603968308120965,
+    "mean_episode_length": 44.5,
+    "success_once": 0.2,
+    "success_at_end": 0.2,
+    "success_termination_episodes": 4,
+    "success_termination": "verified",
+    "learner_restore_probe": "passed",
+    "learner_state_unchanged": true,
+    "learner_updates_during_evaluation": 0,
+    "training_resume_supported": false,
+    "deterministic": true,
+    "seed": 0,
+    "episode_seeds": null,
+    "seed_protocol": "initial seed then continuing reset stream",
+    "checkpoint": "/nfs4/jhkim/repos/DRL/outputs/nominal_tasks/sac_stackcube/sac_stackcube_full_500k/seed_0/20261007T163640_e814ffc5/checkpoints/final.pt",
+    "checkpoint_sha256": "c2b3ec0a45fc7d9eaae56a54b744e17c1720a9cde3f703e919af526a1e8eb922",
+    "counters": {
+      "real_env_steps": 500000,
+      "policy_gradient_steps": 248016,
+      "episodes": 9984,
+      "vector_steps": 15625,
+      "real_policy_samples": 253968384,
+      "synthetic_policy_samples": 0,
+      "synthetic_transition_count": 0,
+      "dynamics_model_refit_count": 0,
+      "dynamics_model_train_steps": 0,
+      "real_truncations": 9984,
+      "final_observation_checks": 9984
+    },
+    "device": "cuda:0"
+  },
+  "success_termination_episodes": 0,
+  "success_termination": "DISABLED: training suppresses termination; see success_once/success_at_end",
+  "real_env_steps": 500000,
+  "policy_gradient_steps": 248016,
+  "episodes": 9984,
+  "vector_steps": 15625,
+  "real_policy_samples": 253968384,
+  "synthetic_policy_samples": 0,
+  "synthetic_transition_count": 0,
+  "dynamics_model_refit_count": 0,
+  "dynamics_model_train_steps": 0,
+  "real_truncations": 9984,
+  "final_observation_checks": 9984,
+  "elapsed_seconds": 6604.5985242137685,
+  "wall_time_seconds": 6604.5985242137685,
+  "evaluation_seconds": 91.27111465856433,
+  "transitions_per_second": 75.70482871394844,
+  "training_transitions_per_second": 76.76567882438833
+}

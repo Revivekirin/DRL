@@ -65,6 +65,12 @@ def parse_experiment(raw, *, algorithm=None):
         if 'mbpo' not in raw:
             raise ValueError('MBPO requires explicit model settings')
         model = MBPOConfig(**raw['mbpo'])
+        if model.binary_features == 'bernoulli_next_v1':
+            if backend != 'maniskill':
+                raise ValueError('Bernoulli features require a declared ManiSkill boolean codec')
+            from dynamics_shift.envs.maniskill_tasks import state_task
+            if not state_task(raw['env']['id']).booleans:
+                raise ValueError('Task observation has no declared binary feature')
     if algorithm == 'mbpo' and backend == 'mujoco':
         config = MBPORunConfig.from_dict(raw)
     else:
@@ -138,3 +144,8 @@ def save_resolved_config(run_dir, config, algorithm, model=None):
     model = model or getattr(config, 'mbpo', None)
     (run_dir/'resolved_config.yaml').write_text(yaml.safe_dump(
         Experiment(algorithm, config, model).to_dict(), sort_keys=False))
+    from .provenance import write_run_manifest
+    write_run_manifest(run_dir, Experiment(algorithm, config, model).to_dict(),
+                       seeds={'training': config.seed, 'evaluation': config.evaluation.seed,
+                              'video': config.tracking.video_seed, 'real_replay': 0,
+                              'model_replay': 1 if algorithm == 'mbpo' and config.env.backend == 'maniskill' else None})

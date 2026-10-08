@@ -1,0 +1,9 @@
+task,group,count,contract_and_seeds_match,duplicate_sac,duplicate_mbpo,missing_sac,missing_mbpo,episode_length_mbpo_minus_sac_mean,per_episode_return_mbpo_minus_sac_mean
+PickCube-v1,both,0,True,0,0,0,0,,
+PickCube-v1,sac_only,100,True,0,0,0,0,39.87,-2.6710333626673672
+PickCube-v1,mbpo_only,0,True,0,0,0,0,,
+PickCube-v1,neither,0,True,0,0,0,0,,
+StackCube-v1,both,0,True,0,0,0,0,,
+StackCube-v1,sac_only,24,True,0,0,0,0,25.916666666666668,18.942784077177446
+StackCube-v1,mbpo_only,0,True,0,0,0,0,,
+StackCube-v1,neither,76,True,0,0,0,0,0.0,-1.1426926517957134
